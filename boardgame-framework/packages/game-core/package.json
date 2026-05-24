@@ -1,0 +1,28 @@
+{
+  "name": "@bgf/game-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" },
+    "./map": { "import": "./dist/map/index.js", "types": "./dist/map/index.d.ts" },
+    "./pieces": { "import": "./dist/pieces/index.js", "types": "./dist/pieces/index.d.ts" },
+    "./players": { "import": "./dist/players/index.js", "types": "./dist/players/index.d.ts" },
+    "./resources": { "import": "./dist/resources/index.js", "types": "./dist/resources/index.d.ts" },
+    "./cards": { "import": "./dist/cards/index.js", "types": "./dist/cards/index.d.ts" },
+    "./dice": { "import": "./dist/dice/index.js", "types": "./dist/dice/index.d.ts" },
+    "./rounds": { "import": "./dist/rounds/index.js", "types": "./dist/rounds/index.d.ts" },
+    "./actions": { "import": "./dist/actions/index.js", "types": "./dist/actions/index.d.ts" },
+    "./events": { "import": "./dist/events/index.js", "types": "./dist/events/index.d.ts" },
+    "./rules": { "import": "./dist/rules/index.js", "types": "./dist/rules/index.d.ts" },
+    "./state": { "import": "./dist/state/index.js", "types": "./dist/state/index.d.ts" }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'lint placeholder'",
+    "test": "echo 'tests placeholder — add vitest'"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "boardgame-framework",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Modular framework for online turn-based board games",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:down": "docker compose down -v",
+    "build": "pnpm -r --filter './packages/*' build && pnpm -r --filter './apps/*' build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:core": "pnpm --filter @bgf/game-core test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "prettier": "^3.2.0"
+  }
+}

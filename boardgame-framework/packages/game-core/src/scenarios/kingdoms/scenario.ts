@@ -189,5 +189,6 @@ export const kingdomsScenario: Scenario = {
     state.extras['k:attackedFrom']         = [];
     state.extras['k:pendingOccupations']   = {};
     state.extras['k:confirmedOccupations'] = {};
+    state.extras['k:mortgagedCities']      = []; // piece IDs of deactivated cities
   },
 };

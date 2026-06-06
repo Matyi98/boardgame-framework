@@ -23,6 +23,8 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 | `scenario.ts` | Wires everything into kingdomsScenario + buildView() |
 | `index.ts` | Public re-exports |
 | `structures/README.md` | Structure design table, validation rules, architecture rationale |
+| `economy-loop.ts` | `processRoundEnd()` — per-round batch: income → food → attrition → mortgage → connectivity |
+| `economy-loop/README.md` | **Critical document** — step-by-step ordering rationale; must be updated on any economic change |
 | `units/README.md` | Unit design table, movement rules, Noble capture sequence with turn-by-turn example |
 
 ## Key invariants
@@ -36,6 +38,10 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
   **Never** write to a `k:eliminated` extras array — that pattern was removed in Step 2
 - `k:pendingOccupations` / `k:confirmedOccupations` drive the Noble two-turn capture pipeline
   (see units/README.md); endTurnExecutor promotes pending→confirmed then resolves confirmed
+- `k:mortgagedCities` is a `string[]` of piece IDs; mortgaged cities are excluded from income
+  AND food cost calculations in income.ts; the list is written only by processRoundEnd
+- Income/food/attrition runs ONCE PER ROUND (not per turn) via `processRoundEnd()` in
+  endTurnExecutor when `newRound === true`; do NOT add per-player economic logic to endTurnExecutor
 
 ## Common tasks
 | Task | Where |
@@ -46,7 +52,9 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 | Change unit balance (cost/attack/defense/movement/food) | Edit `units.ts` UNIT_DEFS only |
 | Allow a new unit to occupy unowned tiles | Set `canOccupyUnowned: true` in `units.ts` UNIT_DEFS |
 | Change which structures allow recruitment | Edit `RECRUIT_STRUCTURES` set in `actions/recruit.ts` |
-| Change attrition priority | Edit ATTRITION_PRIORITY in economy.ts |
+| Change attrition order | Edit `ATTRITION_PRIORITY` in economy.ts (tiebreak) or `recruitmentOrder()` in income.ts |
+| Add a new economic step to the round loop | Add function to `economy-loop.ts`, call in `processPlayerCycle`, update `economy-loop/README.md` |
+| Mortgage a city manually (debugging) | Add piece ID to `state.extras['k:mortgagedCities']` |
 | Change tile gold yield | Edit GOLD_PER_ECONOMIC_VALUE in economy.ts |
 | Change resource yield | Edit BASE_RESOURCE_YIELD in economy.ts |
 | Change gold exchange rate | Edit EXCHANGE_RATE in economy.ts |

@@ -57,6 +57,11 @@ export function getConfirmedOccupations(state: GameState): Record<string, Occupa
   return (state.extras['k:confirmedOccupations'] as Record<string, OccupationEntry>) ?? {};
 }
 
+export function getMortgagedCityIds(state: GameState): Set<string> {
+  const raw = state.extras?.['k:mortgagedCities'] as string[] | undefined;
+  return raw ? new Set(raw) : new Set<string>();
+}
+
 /**
  * Cancel any pending/confirmed occupation held by a specific Noble piece.
  * Called when a Noble moves away from an occupied tile.

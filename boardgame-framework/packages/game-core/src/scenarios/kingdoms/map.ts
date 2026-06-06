@@ -1,32 +1,34 @@
 import { MapBuilder } from '../../map/map-builder.js';
 import type { GameMap } from '../../map/game-map.js';
-import type { RandomSource } from '../../dice/random.js';
 
 /**
  * 61-tile, 4-ring hex map for Kingdoms of Dominion.
  *
+ * Tile properties set via MapBuilder.setTileProperties():
+ *   resourceType   — 'food' | 'iron' | 'wood' | null  (primary yield of the tile)
+ *   economicValue  — 1–5  (gold income weight; higher in the centre)
+ *   combatValue    — 1–3  (historical; currently terrain defenseBonus drives combat)
+ *
  * Terrain bag (61 total):
- *   plains   25 — base land, neutral defense
- *   forest   15 — medium defense
- *   hills    12 — slight defense bonus, iron-flavoured
- *   mountain  9 — strong defense, outer-ring emphasis
+ *   plains   25  — neutral defense, mild economic value
+ *   forest   15  — medium defense, wood flavour
+ *   hills    12  — slight defense, iron flavour
+ *   mountain  9  — strong defense, iron flavour; outer emphasis
+ *
+ * Coordinate system: pointy-top axial (q, r). Ring k tiles satisfy
+ * max(|q|, |r|, |q+r|) = k.
  */
 
-// ── Axial hex ring generator ──────────────────────────────────────────────────
+// ── Axial ring generator ──────────────────────────────────────────────────────
 
 function ring(radius: number): ReadonlyArray<{ q: number; r: number }> {
   if (radius === 0) return [{ q: 0, r: 0 }];
   const coords: { q: number; r: number }[] = [];
-  // Start at (radius, 0) and walk the 6 sides
   let q = radius;
   let r = 0;
   const dirs = [
-    { dq: -1, dr:  0 },
-    { dq: -1, dr:  1 },
-    { dq:  0, dr:  1 },
-    { dq:  1, dr:  0 },
-    { dq:  1, dr: -1 },
-    { dq:  0, dr: -1 },
+    { dq: -1, dr: 0 }, { dq: -1, dr: 1 }, { dq: 0, dr: 1 },
+    { dq: 1, dr: 0 },  { dq: 1, dr: -1 }, { dq: 0, dr: -1 },
   ];
   for (const dir of dirs) {
     for (let i = 0; i < radius; i++) {
@@ -49,41 +51,70 @@ const TERRAIN_BAG: string[] = [
   ...Array<string>(9).fill('mountain'),
 ];
 
-function shuffle(arr: string[], rng: RandomSource): string[] {
+function seededShuffle(arr: string[], seed: string): string[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
-    const j = rng.intInRange(0, i);
+    // Deterministic hash-based index (no seeded RNG needed for map building)
+    const j = Math.abs(
+      (seed.charCodeAt(i % seed.length) * 31 + i) % (i + 1),
+    );
     [copy[i], copy[j]] = [copy[j]!, copy[i]!];
   }
   return copy;
 }
 
-export function buildKingdomsMap(_playerCount: number, seed: string): GameMap {
-  // Use the seed string as an integer for the RNG bootstrap (same pattern as Frontier)
-  const rng: RandomSource = {
-    next(): number {
-      // Simple deterministic hash-based random for map building
-      // The real seeded RNG is on state.rng — this is only used during setup
-      throw new Error('intInRange only');
-    },
-    intInRange(min: number, max: number): number {
-      return min + (Math.floor(Math.abs(Math.sin(seed.length + min + max) * 10000)) % (max - min + 1));
-    },
-  };
+// ── Tile property derivation ──────────────────────────────────────────────────
 
-  const terrains = shuffle(TERRAIN_BAG, rng);
+type ResourceType = 'food' | 'iron' | 'wood' | null;
+
+const TERRAIN_RESOURCE: Record<string, ResourceType> = {
+  plains:   'food',
+  forest:   'wood',
+  hills:    'iron',
+  mountain: 'iron',
+};
+
+/** Economic value: higher at centre (ring 0–1), lower at edges (ring 3–4). */
+function economicValue(ringRadius: number): number {
+  return Math.max(1, 5 - ringRadius);
+}
+
+/** Combat value: mirrors terrain defense bonus (plains 1, hills 2, forest 2, mountain 3). */
+const TERRAIN_COMBAT_VALUE: Record<string, number> = {
+  plains:   1,
+  forest:   2,
+  hills:    2,
+  mountain: 3,
+};
+
+function tileRing(coord: { q: number; r: number }): number {
+  return Math.max(Math.abs(coord.q), Math.abs(coord.r), Math.abs(coord.q + coord.r));
+}
+
+// ── Builder ───────────────────────────────────────────────────────────────────
+
+export function buildKingdomsMap(_playerCount: number, seed: string): GameMap {
+  const terrains = seededShuffle(TERRAIN_BAG, seed);
   const builder = new MapBuilder();
 
   ALL_COORDS.forEach((coord, i) => {
-    builder.addTile(coord, terrains[i] ?? 'plains');
+    const terrain = terrains[i] ?? 'plains';
+    builder.addTile(coord, terrain);
+    builder.setTileProperties(coord, {
+      resourceType:  TERRAIN_RESOURCE[terrain] ?? null,
+      economicValue: economicValue(tileRing(coord)),
+      combatValue:   TERRAIN_COMBAT_VALUE[terrain] ?? 1,
+    });
   });
 
   return builder.build();
 }
 
-/** Starting positions (ring-4 corners) per player count. */
+// ── Starting positions ────────────────────────────────────────────────────────
+
+/** Ring-4 corners per player count. Players start maximally separated. */
 export const KINGDOMS_STARTING_COORDS: Record<number, ReadonlyArray<{ q: number; r: number }>> = {
   2: [{ q: 4, r: -4 }, { q: -4, r: 4 }],
   3: [{ q: 4, r: 0  }, { q: 0,  r: -4 }, { q: -4, r: 4 }],
-  4: [{ q: 4, r: 0  }, { q: 0,  r: -4 }, { q: -4, r: 0 }, { q: 0,  r: 4 }],
+  4: [{ q: 4, r: 0  }, { q: 0,  r: -4 }, { q: -4, r: 0 }, { q:  0, r: 4 }],
 };

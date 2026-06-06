@@ -13,6 +13,17 @@ export interface Piece {
   readonly kind: string;
   readonly owner: PlayerId;
   readonly location: PieceLocation;
-  /** Free-form state (strength, health, level, etc.). */
+  /**
+   * Numeric combat/economy statistics for this specific piece instance.
+   * Populated at creation from PieceKindDefinition.defaultStats and may be
+   * overridden per-instance (e.g. a veteran unit with boosted attack).
+   * Typed as numbers because stats participate in math (resolveAttack, income).
+   * Use `state` for non-numeric or mutable runtime data.
+   */
+  readonly stats?: Readonly<Record<string, number>>;
+  /**
+   * Mutable runtime state (current HP, movesLeft this turn, siege progress…).
+   * Unlike stats, this is expected to change over the piece's lifetime.
+   */
   readonly state?: Readonly<Record<string, unknown>>;
 }

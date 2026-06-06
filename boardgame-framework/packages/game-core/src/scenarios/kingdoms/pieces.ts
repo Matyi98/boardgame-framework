@@ -1,9 +1,18 @@
 import { PieceRegistry } from '../../pieces/piece-registry.js';
 
 /**
- * Balance knobs: all costs, attack values, HP, and food costs are here.
- * Changing a unit's stats = one-line edit, zero risk to validator logic.
+ * Balance knobs: all costs, attack values, HP, food costs, and defense
+ * multipliers are defined here. Changing a unit's stats = one-line edit,
+ * zero changes to validators or executors.
+ *
+ * defaultStats are merged into Piece.stats at creation time by makeUnit()
+ * (or makeUnitFromRegistry()). resolveAttack() reads Piece.stats['attack']
+ * directly, so the value flows from this constant through to combat with no
+ * manual threading.
  */
+
+// ── Unit stats (numeric, used in combat and economy formulas) ─────────────────
+
 export interface UnitStats {
   attack: number;
   foodPerRound: number;
@@ -12,17 +21,18 @@ export interface UnitStats {
 
 export interface StructureStats {
   hp: number;
-  /** combat defense multiplier applied to defenders on this tile (1.0 = no bonus) */
+  /** Defense multiplier applied to all defenders on this tile (StructureEffect). */
   defenseMultiplier: number;
 }
 
-export const UNIT_STATS: Record<string, UnitStats> = {
+/** Authoritative balance constants. Referenced by income.ts and combat helpers. */
+export const UNIT_STATS: Readonly<Record<string, UnitStats>> = {
   'spearman':  { attack: 2, foodPerRound: 1, hp: 1 },
   'cannoneer': { attack: 5, foodPerRound: 2, hp: 2 },
   'noble':     { attack: 3, foodPerRound: 1, hp: 1 },
 };
 
-export const STRUCTURE_STATS: Record<string, StructureStats> = {
+export const STRUCTURE_STATS: Readonly<Record<string, StructureStats>> = {
   'capital-base': { hp: 5, defenseMultiplier: 1.0 },
   'farm':         { hp: 3, defenseMultiplier: 1.0 },
   'city':         { hp: 3, defenseMultiplier: 1.0 },
@@ -30,17 +40,29 @@ export const STRUCTURE_STATS: Record<string, StructureStats> = {
   'gate':         { hp: 2, defenseMultiplier: 1.0 },
 };
 
-export const UNIT_KINDS = new Set(Object.keys(UNIT_STATS));
+export const UNIT_KINDS      = new Set(Object.keys(UNIT_STATS));
 export const STRUCTURE_KINDS = new Set(Object.keys(STRUCTURE_STATS));
 export const BUILDABLE_STRUCTURES = new Set(['farm', 'city', 'castle', 'gate']);
 
+// ── Registry ──────────────────────────────────────────────────────────────────
+
+/**
+ * PieceRegistry for kingdoms-v1. Each piece definition carries:
+ *   cost        — resource cost to build/recruit
+ *   limitPerPlayer — max instances per player
+ *   defaultStats — numeric stats merged into Piece.stats at creation
+ *   meta        — non-numeric display/category data
+ *
+ * defaultStats enables resolveAttack() to read Piece.stats['attack'] without
+ * any scenario-specific accessor — the value is on the piece itself.
+ */
 export const kingdomsPieces = new PieceRegistry()
   .register({
     kind: 'capital-base',
     category: 'building',
     displayName: 'Capital Base',
     limitPerPlayer: 1,
-    meta: { ...STRUCTURE_STATS['capital-base'] },
+    defaultStats: { hp: STRUCTURE_STATS['capital-base']!.hp, defenseMultiplier: STRUCTURE_STATS['capital-base']!.defenseMultiplier },
   })
   .register({
     kind: 'farm',
@@ -48,7 +70,7 @@ export const kingdomsPieces = new PieceRegistry()
     displayName: 'Farm',
     cost: { wood: 2 },
     limitPerPlayer: 5,
-    meta: { ...STRUCTURE_STATS['farm'] },
+    defaultStats: { hp: STRUCTURE_STATS['farm']!.hp, defenseMultiplier: STRUCTURE_STATS['farm']!.defenseMultiplier },
   })
   .register({
     kind: 'city',
@@ -56,7 +78,7 @@ export const kingdomsPieces = new PieceRegistry()
     displayName: 'City',
     cost: { wood: 3, iron: 2 },
     limitPerPlayer: 3,
-    meta: { ...STRUCTURE_STATS['city'] },
+    defaultStats: { hp: STRUCTURE_STATS['city']!.hp, defenseMultiplier: STRUCTURE_STATS['city']!.defenseMultiplier },
   })
   .register({
     kind: 'castle',
@@ -64,14 +86,14 @@ export const kingdomsPieces = new PieceRegistry()
     displayName: 'Castle',
     cost: { wood: 4, iron: 3 },
     limitPerPlayer: 3,
-    meta: { ...STRUCTURE_STATS['castle'] },
+    defaultStats: { hp: STRUCTURE_STATS['castle']!.hp, defenseMultiplier: STRUCTURE_STATS['castle']!.defenseMultiplier },
   })
   .register({
     kind: 'gate',
     category: 'building',
     displayName: 'Gate',
     cost: { wood: 2, iron: 1 },
-    meta: { ...STRUCTURE_STATS['gate'] },
+    defaultStats: { hp: STRUCTURE_STATS['gate']!.hp, defenseMultiplier: STRUCTURE_STATS['gate']!.defenseMultiplier },
   })
   .register({
     kind: 'spearman',
@@ -79,7 +101,11 @@ export const kingdomsPieces = new PieceRegistry()
     displayName: 'Spearman',
     cost: { iron: 1, food: 1 },
     limitPerPlayer: 20,
-    meta: { ...UNIT_STATS['spearman'] },
+    defaultStats: {
+      attack:       UNIT_STATS['spearman']!.attack,
+      foodPerRound: UNIT_STATS['spearman']!.foodPerRound,
+      hp:           UNIT_STATS['spearman']!.hp,
+    },
   })
   .register({
     kind: 'cannoneer',
@@ -87,7 +113,11 @@ export const kingdomsPieces = new PieceRegistry()
     displayName: 'Cannoneer',
     cost: { iron: 3, food: 2 },
     limitPerPlayer: 8,
-    meta: { ...UNIT_STATS['cannoneer'] },
+    defaultStats: {
+      attack:       UNIT_STATS['cannoneer']!.attack,
+      foodPerRound: UNIT_STATS['cannoneer']!.foodPerRound,
+      hp:           UNIT_STATS['cannoneer']!.hp,
+    },
   })
   .register({
     kind: 'noble',
@@ -95,5 +125,9 @@ export const kingdomsPieces = new PieceRegistry()
     displayName: 'Noble',
     cost: { gold: 5 },
     limitPerPlayer: 2,
-    meta: { ...UNIT_STATS['noble'] },
+    defaultStats: {
+      attack:       UNIT_STATS['noble']!.attack,
+      foodPerRound: UNIT_STATS['noble']!.foodPerRound,
+      hp:           UNIT_STATS['noble']!.hp,
+    },
   });

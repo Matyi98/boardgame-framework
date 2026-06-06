@@ -25,6 +25,8 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 - A tile becomes neutral only via `attackTileExecutor` when ownership is transferred
 - `k:movedThisTurn` and `k:attackedFrom` are always reset at end-of-turn
 - `k:nextPieceId` monotonically increases — never reuse IDs even after pieces die
+- Player elimination is tracked via `state.players.eliminate(id)` → `Player.status = 'eliminated'`
+  **Never** write to a `k:eliminated` extras array — that pattern was removed in Step 2
 
 ## Common tasks
 | Task | Where |

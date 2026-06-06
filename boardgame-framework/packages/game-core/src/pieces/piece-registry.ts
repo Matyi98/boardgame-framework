@@ -10,6 +10,15 @@ export interface PieceKindDefinition {
   readonly cost?: Readonly<Record<string, number>>;
   /** Max instances per player. Undefined = unlimited. */
   readonly limitPerPlayer?: number;
+  /**
+   * Default numeric stats merged into Piece.stats at creation time.
+   * Scenarios declare these once here (e.g. attack: 3, foodPerRound: 1)
+   * so every new piece of this kind starts with the right values without
+   * the caller having to repeat them. Overrides are possible per-instance.
+   * Balance tuning = one edit here, zero changes to validators/executors.
+   */
+  readonly defaultStats?: Readonly<Record<string, number>>;
+  /** Arbitrary non-numeric metadata (display hints, category tags, etc.). */
   readonly meta?: Readonly<Record<string, unknown>>;
 }
 
@@ -33,5 +42,10 @@ export class PieceRegistry {
   all(): PieceKindDefinition[] { return [...this.defs.values()]; }
   byCategory(category: PieceKindDefinition['category']): PieceKindDefinition[] {
     return this.all().filter(d => d.category === category);
+  }
+
+  /** Returns the defaultStats for the given kind, or an empty object. */
+  getDefaultStats(kind: string): Readonly<Record<string, number>> {
+    return this.defs.get(kind)?.defaultStats ?? {};
   }
 }

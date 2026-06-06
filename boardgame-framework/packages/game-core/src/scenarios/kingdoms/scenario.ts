@@ -47,7 +47,6 @@ function buildView(
 ): Record<string, unknown> {
   const ownership = (state.extras['k:ownership'] as Record<string, string>) ?? {};
   const capitals  = (state.extras['k:capitals']  as Record<string, string>) ?? {};
-  const eliminated = (state.extras['k:eliminated'] as string[]) ?? [];
   const activePlayer = state.rounds.turn().activePlayer;
 
   const tiles = [...state.map.tiles()].map((t) => {
@@ -80,7 +79,7 @@ function buildView(
       color: p.color,
       seat: p.seat,
       isActive: p.id === activePlayer,
-      isEliminated: eliminated.includes(p.id),
+      isEliminated: state.players.isEliminated(p.id),
       capitalTileId: capitals[p.id] ?? null,
       wood:  inv?.get('wood')  ?? 0,
       food:  inv?.get('food')  ?? 0,
@@ -181,7 +180,6 @@ export const kingdomsScenario: Scenario = {
 
     state.extras['k:ownership']      = ownership;
     state.extras['k:capitals']       = capitals;
-    state.extras['k:eliminated']     = [];
     state.extras['k:nextPieceId']    = 100; // start above setup piece IDs
     state.extras['k:movedThisTurn']  = [];
     state.extras['k:attackedFrom']   = [];

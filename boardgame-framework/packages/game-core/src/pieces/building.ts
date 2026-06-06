@@ -14,6 +14,7 @@ export function makeBuilding(args: {
   kind: string;
   owner: PlayerId;
   vertexId: string;
+  stats?: Record<string, number>;
   state?: Record<string, unknown>;
 }): Building {
   return {
@@ -21,6 +22,7 @@ export function makeBuilding(args: {
     kind: args.kind,
     owner: args.owner,
     location: { kind: 'vertex', vertexId: args.vertexId },
+    ...(args.stats ? { stats: Object.freeze({ ...args.stats }) } : {}),
     ...(args.state ? { state: args.state } : {}),
   };
 }

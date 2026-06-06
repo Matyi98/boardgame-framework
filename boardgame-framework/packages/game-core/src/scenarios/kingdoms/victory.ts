@@ -1,10 +1,6 @@
 import type { VictoryCondition, VictoryResult } from '../../rules/victory-condition.js';
 import type { GameState } from '../../state/game-state.js';
 
-function getEliminated(state: GameState): string[] {
-  return (state.extras['k:eliminated'] as string[]) ?? [];
-}
-
 /**
  * Win when all other players are eliminated. Evaluated after every action
  * that could produce a `player-eliminated` event.
@@ -12,11 +8,9 @@ function getEliminated(state: GameState): string[] {
 export const lastPlayerStanding: VictoryCondition = {
   id: 'last-player-standing',
   evaluate(state: GameState): VictoryResult | null {
-    const allPlayers = state.players.all();
-    if (allPlayers.length < 2) return null;
+    if (state.players.count() < 2) return null;
 
-    const eliminated = new Set(getEliminated(state));
-    const survivors = allPlayers.filter((p) => !eliminated.has(p.id));
+    const survivors = state.players.active();
 
     if (survivors.length === 1) {
       return {

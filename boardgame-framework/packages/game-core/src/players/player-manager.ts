@@ -42,7 +42,7 @@ export class PlayerManager {
     return p;
   }
 
-  atSeat(seat: number): Player | undefined { return this.bySeat[seat]; }
+  atSeat(seat: number): Player | undefined { return this.bySeat.find((p) => p.seat === seat); }
 
   isEliminated(id: PlayerId): boolean {
     return this.byId.get(id)?.status === 'eliminated';

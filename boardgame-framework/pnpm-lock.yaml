@@ -303,7 +303,11 @@ importers:
         specifier: ^5.5.0
         version: 5.9.3
 
-  packages/game-core: {}
+  packages/game-core:
+    devDependencies:
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@20.19.41)(terser@5.48.0)
 
   packages/shared-types:
     devDependencies:

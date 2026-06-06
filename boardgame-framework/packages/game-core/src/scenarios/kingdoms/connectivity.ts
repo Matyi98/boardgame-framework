@@ -1,42 +1,33 @@
-import type { GameMap } from '../../map/game-map.js';
-
 /**
- * BFS reachability from a player's capital tile through tiles they own.
+ * Kingdoms-specific connectivity helpers.
  *
- * Disconnected owned tiles generate no income at end-of-turn. This creates
- * strategic depth: cutting an opponent's supply line is as valuable as direct
- * military conquest.
+ * This module is a thin wrapper over the framework-level BFS utility
+ * (utils/connectivity.ts). It adds:
  *
- * This is a pure function — call it whenever you need connectivity, don't cache it.
- * At 61-tile board sizes the BFS runs in well under 1ms. See ADR-005.
+ *   - playerOwnedTiles()   — builds an owned-tile set from k:ownership
+ *   - playerGateTileIds()  — finds tiles that carry a Gate structure for a player
+ *
+ * Strategy note: income only flows from tiles connected to the capital through
+ * contiguous owned territory. A Gate structure on an owned tile extends that
+ * connectivity one hop through an adjacent unowned tile. Cutting an opponent's
+ * supply line (by conquering a tile between their capital and their farms/cities)
+ * is as valuable as direct military conquest.
+ *
+ * Always call getConnectedTiles() fresh — never cache. ADR-005.
  */
-export function getConnectedTiles(
-  map: GameMap,
-  capitalTileId: string,
-  ownedTileIds: ReadonlySet<string>,
-): Set<string> {
-  if (!ownedTileIds.has(capitalTileId)) return new Set();
 
-  const visited = new Set<string>();
-  const queue: string[] = [capitalTileId];
+import type { GameState } from '../../state/game-state.js';
+import type { GameMap } from '../../map/game-map.js';
+import { getConnectedTiles as frameworkGetConnectedTiles, isConnected } from '../../utils/connectivity.js';
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (visited.has(current)) continue;
-    visited.add(current);
+// Re-export isConnected so validators import from one place.
+export { isConnected };
 
-    const tile = map.tileById(current);
-    if (!tile) continue;
+// Re-export the framework BFS under the same name so existing callers in
+// income.ts and tests don't need to change their import path.
+export { frameworkGetConnectedTiles as getConnectedTiles };
 
-    for (const neighbour of map.neighboursOf(tile.coord)) {
-      if (!visited.has(neighbour.id) && ownedTileIds.has(neighbour.id)) {
-        queue.push(neighbour.id);
-      }
-    }
-  }
-
-  return visited;
-}
+// ── Scenario-specific helpers ─────────────────────────────────────────────────
 
 /** Build an owned-tile set for one player from the k:ownership extra. */
 export function playerOwnedTiles(
@@ -48,4 +39,41 @@ export function playerOwnedTiles(
       .filter(([, owner]) => owner === playerId)
       .map(([id]) => id),
   );
+}
+
+/**
+ * Returns tile IDs where a Gate structure owned by the given player is located.
+ *
+ * These are passed to getConnectedTiles() as bridgeTileIds so that Gates extend
+ * connectivity through one adjacent unowned tile.
+ */
+export function playerGateTileIds(state: GameState, playerId: string): Set<string> {
+  const result = new Set<string>();
+  for (const [, piece] of state.pieces) {
+    if (piece.kind !== 'gate' || piece.owner !== playerId) continue;
+    if (piece.location.kind !== 'tile') continue;
+    result.add((piece.location as { kind: 'tile'; tileId: string }).tileId);
+  }
+  return result;
+}
+
+/**
+ * Build the full connected-tile set for a player, Gate bridges included.
+ *
+ * Convenience wrapper used by income.ts and action validators so they don't
+ * need to assemble the three inputs themselves.
+ */
+export function playerConnectedTiles(
+  map: GameMap,
+  state: GameState,
+  playerId: string,
+): Set<string> {
+  const ownership = (state.extras['k:ownership'] as Record<string, string>) ?? {};
+  const capitals  = (state.extras['k:capitals']  as Record<string, string>) ?? {};
+  const capitalId = capitals[playerId];
+  if (!capitalId) return new Set();
+
+  const owned = playerOwnedTiles(ownership, playerId);
+  const gates = playerGateTileIds(state, playerId);
+  return frameworkGetConnectedTiles(map, capitalId, owned, gates);
 }

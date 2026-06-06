@@ -29,9 +29,11 @@ export class ClockwiseTurnOrder implements TurnOrder {
     if (active.length === 0) throw new Error('No active players remain');
     if (active.length === 1) return active[0]!.id;
     const idx = active.findIndex((p) => p.id === currentId);
-    // If the current player was just eliminated, idx will be -1.
-    // Fall through to seat 0 in that case (safe — victory should fire first).
-    return active[(Math.max(idx, 0) + 1) % active.length]!.id;
+    // idx === -1 means the current player was just eliminated mid-turn.
+    // Return the first active player (seat 0). Victory should have fired first
+    // in a 1v1, but for 3+ player games we still need a safe fallback.
+    if (idx === -1) return active[0]!.id;
+    return active[(idx + 1) % active.length]!.id;
   }
 }
 

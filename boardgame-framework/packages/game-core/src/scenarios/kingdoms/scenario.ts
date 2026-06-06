@@ -23,19 +23,20 @@ import type { GameState } from '../../state/game-state.js';
 import type { Player } from '../../players/player.js';
 import { ClockwiseTurnOrder } from '../../rounds/turn-order.js';
 import { tileId } from '../../map/tile.js';
-import { makeUnit } from '../../pieces/unit.js';
+import { makeUnitFromRegistry } from '../../pieces/unit.js';
 import { kingdomsTerrains } from './terrain.js';
 import { kingdomsResources } from './resources.js';
-import { kingdomsPieces } from './pieces.js';
+import { kingdomsPieces, STRUCTURE_STATS } from './pieces.js';
 import { buildKingdomsMap, KINGDOMS_STARTING_COORDS } from './map.js';
 import {
-  recruitUnitValidator,   recruitUnitExecutor,
-  moveUnitValidator,      moveUnitExecutor,
-  attackTileValidator,    attackTileExecutor,
-  buildStructureValidator, buildStructureExecutor,
+  recruitUnitValidator,      recruitUnitExecutor,
+  moveUnitValidator,         moveUnitExecutor,
+  attackTileValidator,       attackTileExecutor,
+  buildStructureValidator,   buildStructureExecutor,
   demolishStructureValidator, demolishStructureExecutor,
-  endTurnValidator,       endTurnExecutor,
-} from './actions.js';
+  developTileValidator,      developTileExecutor,
+  endTurnValidator,          endTurnExecutor,
+} from './actions/index.js';
 import { lastPlayerStanding } from './victory.js';
 
 // ── View builder ──────────────────────────────────────────────────────────────
@@ -124,6 +125,7 @@ export const kingdomsScenario: Scenario = {
     attackTileValidator,
     buildStructureValidator,
     demolishStructureValidator,
+    developTileValidator,
     endTurnValidator,
   ],
   executors: [
@@ -132,6 +134,7 @@ export const kingdomsScenario: Scenario = {
     attackTileExecutor,
     buildStructureExecutor,
     demolishStructureExecutor,
+    developTileExecutor,
     endTurnExecutor,
   ],
   rules: [],
@@ -150,21 +153,22 @@ export const kingdomsScenario: Scenario = {
       if (!coord) return;
       const tid = tileId(coord);
 
-      // Place Capital Base
+      // Place Capital Base — stats from registry (hp, defenseMultiplier);
+      // state.hp tracks current mutable HP separately from stats.hp (max HP).
       const capitalId = `capital-${player.id}`;
-      state.pieces.set(capitalId, makeUnit({
+      state.pieces.set(capitalId, makeUnitFromRegistry(kingdomsPieces, {
         id: capitalId,
         kind: 'capital-base',
         owner: player.id,
         tileId: tid,
-        state: { hp: 5 },
+        state: { hp: STRUCTURE_STATS['capital-base']!.hp },
       }));
 
-      // Place 2 starting Spearmen
+      // Place 2 starting Spearmen — stats from registry (attack, foodPerRound, hp)
       const sp1 = `sp-${player.id}-1`;
       const sp2 = `sp-${player.id}-2`;
-      state.pieces.set(sp1, makeUnit({ id: sp1, kind: 'spearman', owner: player.id, tileId: tid }));
-      state.pieces.set(sp2, makeUnit({ id: sp2, kind: 'spearman', owner: player.id, tileId: tid }));
+      state.pieces.set(sp1, makeUnitFromRegistry(kingdomsPieces, { id: sp1, kind: 'spearman', owner: player.id, tileId: tid }));
+      state.pieces.set(sp2, makeUnitFromRegistry(kingdomsPieces, { id: sp2, kind: 'spearman', owner: player.id, tileId: tid }));
 
       // Claim starting tile
       ownership[tid] = player.id;

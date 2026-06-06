@@ -56,6 +56,9 @@ src/
     combat.ts            ← resolveAttack(), pieceAsCombatant(), CombatResult — framework-level, pure
     victory-condition.ts ← VictoryCondition interface
     rule-engine.ts
+  utils/
+    connectivity.ts  ← getConnectedTiles() BFS + isConnected() — framework-level, pure; Gate bridge via bridgeTileIds param
+    README.md        ← Algorithm details, complexity analysis, anti-caching warning (ADR-005)
   cards/             ← Deck, Hand, CardEffect (unused in Frontier)
   scenarios/
     demo/            ← Frontier game (the only implemented scenario)

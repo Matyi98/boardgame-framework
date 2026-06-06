@@ -7,17 +7,21 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 ## Files
 | File | Purpose |
 |------|---------|
+| `structures.ts` | **SINGLE SOURCE OF TRUTH** for all structure data (costs, hp, defense, income, food/round) |
 | `terrain.ts` | TerrainRegistry with defenseBonus + moveCost in meta |
 | `resources.ts` | ResourceRegistry: wood, food, iron, gold |
-| `pieces.ts` | PieceRegistry + UNIT_STATS + STRUCTURE_STATS constants |
+| `pieces.ts` | PieceRegistry + UNIT_STATS; STRUCTURE_STATS/BUILDABLE_STRUCTURES derived from structures.ts |
+| `economy.ts` | Pure math: calculateTileIncome, calculateStructureFoodCost, STRUCTURE_INCOME_EFFECTS (derived from structures.ts) |
 | `map.ts` | buildKingdomsMap() — 61-tile 4-ring hex, KINGDOMS_STARTING_COORDS |
 | `combat.ts` | resolveAttack() — pure function, no framework imports |
-| `connectivity.ts` | getConnectedTiles() — BFS from capital through owned tiles |
-| `income.ts` | computeIncome(), computeFoodCost(), chooseAttritionVictims() |
-| `actions.ts` | All validators + executors |
+| `connectivity.ts` | Thin wrapper over utils/connectivity.ts. Adds playerOwnedTiles(), playerGateTileIds(), playerConnectedTiles() |
+| `income.ts` | computeIncome(), computeFoodCost(), chooseAttritionVictims() — state integration layer |
+| `actions/` | Modular action files (one file per action group): helpers, recruit, move, attack, build, develop, end-turn |
+| `actions/index.ts` | Barrel re-export of all validators + executors |
 | `victory.ts` | lastPlayerStanding victory condition |
 | `scenario.ts` | Wires everything into kingdomsScenario + buildView() |
 | `index.ts` | Public re-exports |
+| `structures/README.md` | Structure design table, validation rules, architecture rationale |
 
 ## Key invariants
 - `k:ownership` is the source of truth for tile ownership — NOT piece presence
@@ -25,17 +29,24 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 - A tile becomes neutral only via `attackTileExecutor` when ownership is transferred
 - `k:movedThisTurn` and `k:attackedFrom` are always reset at end-of-turn
 - `k:nextPieceId` monotonically increases — never reuse IDs even after pieces die
+- `k:developed` is a `string[]` of developed tile IDs; income.ts reads it for develop bonus
 - Player elimination is tracked via `state.players.eliminate(id)` → `Player.status = 'eliminated'`
   **Never** write to a `k:eliminated` extras array — that pattern was removed in Step 2
 
 ## Common tasks
 | Task | Where |
 |------|-------|
-| Add a new unit type | Add to UNIT_STATS + kingdomsPieces in pieces.ts, handle cost deduction in recruitUnitExecutor |
-| Add a new structure | Add to STRUCTURE_STATS + BUILDABLE_STRUCTURES + kingdomsPieces in pieces.ts, add income to STRUCTURE_INCOME in income.ts |
-| Change combat formula | Edit resolveAttack() in combat.ts only |
+| Add a new structure | Add ONE entry to `structures.ts` STRUCTURE_DEFS — pieces.ts and economy.ts derive automatically |
+| Change structure balance (cost/defense/income/food) | Edit `structures.ts` STRUCTURE_DEFS only |
+| Add a new unit type | Add to UNIT_STATS + one `registry.register()` call in `pieces.ts` |
+| Change tile gold yield | Edit GOLD_PER_ECONOMIC_VALUE in economy.ts |
+| Change resource yield | Edit BASE_RESOURCE_YIELD in economy.ts |
+| Change gold exchange rate | Edit EXCHANGE_RATE in economy.ts |
+| Change develop cost | Edit DEVELOP_COST in economy.ts |
+| Change attrition priority | Edit ATTRITION_PRIORITY in economy.ts |
+| Change combat formula | Edit resolveAttack() in ../../rules/combat.ts |
 | Change terrain defense | Edit defenseBonus in terrain.ts meta |
-| Add a new action | Add validator + executor to actions.ts, register in scenario.ts |
+| Add a new action | Create `actions/<name>.ts`, export from `actions/index.ts`, register in scenario.ts |
 | Change starting resources | Edit onSetup() in scenario.ts |
 | Add a second victory condition | Add to victory.ts, register in victoryConditions array in scenario.ts |
 
@@ -43,6 +54,22 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 The Kingdoms frontend (KingdomsBoard, EconomyPanel, MilitaryPanel) does not exist yet.
 When implementing it, consume the `KingdomsView` produced by `scenario.buildView()`.
 The view shape is documented in `scenario.ts` → `buildView()`.
+
+## Connectivity quick reference
+
+`playerConnectedTiles(map, state, playerId)` — the single function to call from
+validators and income.ts. It reads k:ownership, k:capitals, and Gate pieces from
+state, then delegates to the framework BFS with Gate bridge support.
+
+`playerGateTileIds(state, playerId)` — returns tile IDs where the player has a
+Gate structure. Passed to the BFS as `bridgeTileIds` so Gates extend connectivity
+one hop through an adjacent unowned tile.
+
+`isConnected(tileId, connectedSet)` — use in validators instead of `.has()`:
+```typescript
+if (!isConnected(tileId, playerConnectedTiles(state.map, state, playerId)))
+  return actionError('disconnected', '...');
+```
 
 ## Things NOT to do
 - Do not import NestJS, ioredis, or any I/O library here (game-core is pure)

@@ -51,13 +51,38 @@ const TERRAIN_BAG: string[] = [
   ...Array<string>(9).fill('mountain'),
 ];
 
+/**
+ * Hash an arbitrary string to a non-zero uint32 using FNV-1a.
+ * Matches the pattern in dice/random.ts so shuffle quality is consistent
+ * with the game's RNG. Different game IDs (even single-char differences)
+ * produce well-distributed seeds.
+ */
+function seedFromString(s: string): number {
+  let h = 2166136261; // FNV-1a offset basis
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1; // unsigned, never zero (xorshift dies on 0)
+}
+
+/**
+ * Fisher-Yates shuffle driven by an xorshift32 PRNG seeded from the game ID.
+ *
+ * Previous implementation used (charCode × 31 + i) % (i+1) which cycled the
+ * same small hash values for short seeds, producing visibly biased terrain
+ * distributions. xorshift32 passes standard randomness tests at negligible
+ * extra cost.
+ */
 function seededShuffle(arr: string[], seed: string): string[] {
   const copy = [...arr];
+  let x = seedFromString(seed);
   for (let i = copy.length - 1; i > 0; i--) {
-    // Deterministic hash-based index (no seeded RNG needed for map building)
-    const j = Math.abs(
-      (seed.charCodeAt(i % seed.length) * 31 + i) % (i + 1),
-    );
+    // xorshift32 — same algorithm as SeededRandom in dice/random.ts
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    const j = (x >>> 0) % (i + 1); // unsigned modulo keeps j in [0, i]
     [copy[i], copy[j]] = [copy[j]!, copy[i]!];
   }
   return copy;

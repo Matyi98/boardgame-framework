@@ -19,6 +19,19 @@
  *   scenario-specific fields.
  */
 
+// ── RNG contract ──────────────────────────────────────────────────────────────
+
+/**
+ * Minimal RNG contract for casualty selection.
+ * Structurally compatible with RandomSource (game-core/dice/random.ts) so
+ * callers can pass `state.rng` directly without an adapter.
+ * Decoupled from RandomSource to keep rules/ free of any scenario or framework
+ * imports — a test can satisfy this with a one-liner mock.
+ */
+export interface CombatRng {
+  intInRange(min: number, max: number): number;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -73,7 +86,29 @@ export interface CombatResult {
   readonly tileConquered: boolean;
 }
 
-// ── Pure helper ───────────────────────────────────────────────────────────────
+// ── Pure helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Fisher-Yates partial shuffle: returns `count` elements chosen uniformly at
+ * random from `items` without replacement. When `rng` is absent, falls back
+ * to deterministic slice(0, count) so the function remains pure without RNG.
+ */
+function pickRandom<T>(
+  items: ReadonlyArray<T>,
+  count: number,
+  rng?: CombatRng,
+): ReadonlyArray<T> {
+  if (count <= 0) return [];
+  if (!rng || count >= items.length) return items.slice(0, count);
+  const copy = items.slice() as T[];
+  for (let i = 0; i < count; i++) {
+    const j = rng.intInRange(i, copy.length - 1);
+    const tmp = copy[i]!;
+    copy[i] = copy[j]!;
+    copy[j] = tmp;
+  }
+  return copy.slice(0, count);
+}
 
 function computeStrength(combatants: ReadonlyArray<Combatant>): number {
   if (combatants.length === 0) return 0;
@@ -106,6 +141,7 @@ export function resolveAttack(
   defenders: ReadonlyArray<Combatant>,
   tile: TileProperties,
   structures: ReadonlyArray<StructureEffect> = [],
+  rng?: CombatRng,
 ): CombatResult {
   const attackerStrength = computeStrength(attackers);
   const defenseMultiplier = compositeDefenseBonus(tile, structures);
@@ -133,7 +169,7 @@ export function resolveAttack(
       attackerWins: true,
       attackerStrength,
       defenderStrength,
-      attackerLosses: attackers.slice(0, casualtyCount).map((c) => c.id),
+      attackerLosses: pickRandom(attackers, casualtyCount, rng).map((c) => c.id),
       defenderLosses: defenders.map((c) => c.id),
       tileConquered: true,
     };
@@ -147,7 +183,7 @@ export function resolveAttack(
       attackerStrength,
       defenderStrength,
       attackerLosses: attackers.map((c) => c.id),
-      defenderLosses: defenders.slice(0, casualtyCount).map((c) => c.id),
+      defenderLosses: pickRandom(defenders, casualtyCount, rng).map((c) => c.id),
       tileConquered: false,
     };
   }

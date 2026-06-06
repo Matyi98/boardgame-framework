@@ -19,9 +19,10 @@ Pure, framework-level rule utilities. Nothing here imports a scenario; scenarios
 ### Types
 
 ```typescript
-interface Combatant      { id: string; kind: string; attack: number; }
-interface TileProperties { defenseBonus: number; }
+interface Combatant       { id: string; kind: string; attack: number; }
+interface TileProperties  { defenseBonus: number; }
 interface StructureEffect { defenseMultiplier: number; }
+interface CombatRng       { intInRange(min: number, max: number): number; }
 interface CombatResult {
   attackerWins: boolean;
   attackerStrength: number;
@@ -44,8 +45,30 @@ Defenders receive additional multipliers:
 defenderStrength × tile.defenseBonus × Π(structure.defenseMultiplier)
 ```
 
-The winner is whoever has higher strength. Losers lose all units; winners keep
-all units (no attrition — scenarios can layer attrition on top if needed).
+**Why non-linear scaling?** Four spearmen (attack 3 each, strength ≈ 24) are not 4×
+as strong as one (strength 3). Quality beats quantity for large stacks but cannot
+fully substitute for it. This makes defensive positioning + structure combos viable
+against numerically superior attackers.
+
+The winner is whoever has higher strength.
+
+### Casualty Selection
+
+Losing side always loses all units. Winning side takes partial casualties:
+
+| Winner     | Casualties                                             |
+|------------|--------------------------------------------------------|
+| Attacker   | `floor(count × defenderStrength/attackerStrength × 0.5)` units |
+| Defender   | `floor(count × attackerStrength/defenderStrength × 0.4)` units |
+
+Which specific pieces die is determined by **Fisher-Yates partial shuffle** when
+an `rng` is passed — so identical armies fighting in the same terrain can produce
+different survivors each time. Without `rng`, falls back to deterministic slice
+(useful for tests asserting exact outcomes).
+
+**Tuning constants** live inside `resolveAttack()`:
+- `0.5` — attacker max loss fraction (close fights, attacker wins)
+- `0.4` — defender max loss fraction (close fights, defender wins)
 
 ### Usage
 
@@ -61,12 +84,13 @@ const defenders = defendingPieces
   .map(pieceAsCombatant)
   .filter((c): c is Combatant => c !== null);
 
-// Resolve
+// Resolve with seeded RNG (pass state.rng — structurally satisfies CombatRng)
 const result = resolveAttack(
   attackers,
   defenders,
   { defenseBonus: tile.terrain.meta.defenseBonus },
   structures.map(s => ({ defenseMultiplier: s.stats?.['defenseMultiplier'] ?? 1.0 })),
+  state.rng,
 );
 
 if (result.attackerWins) { /* transfer ownership */ }

@@ -2,15 +2,18 @@ import type { ActionValidator } from '../../../actions/action-validator.js';
 import type { ActionExecutor } from '../../../actions/action-executor.js';
 import type { GameState } from '../../../state/game-state.js';
 import type { GameEvent } from '../../../events/game-event.js';
+import type { Piece } from '../../../pieces/piece.js';
 import { actionError } from '../../../actions/action.js';
 import { resolveAttack, pieceAsCombatant, type StructureEffect, type TileProperties } from '../../../rules/combat.js';
-import { UNIT_STATS, UNIT_KINDS, STRUCTURE_KINDS, STRUCTURE_STATS } from '../pieces.js';
+import { UNIT_STATS, UNIT_KINDS, COMBAT_UNIT_KINDS, STRUCTURE_KINDS, STRUCTURE_STATS } from '../pieces.js';
 import { terrainDefenseBonus } from '../terrain.js';
 import {
   guardActivePlayer,
   getOwnership,
   getCapitals,
   getAttackedFrom,
+  getPendingOccupations,
+  getConfirmedOccupations,
   connectedTiles,
   isConnected,
   unitsOnTile,
@@ -38,6 +41,8 @@ export const attackTileValidator: ActionValidator<AttackPayload> = {
       return actionError('not-adjacent', 'Tiles are not adjacent');
     if (unitsOnTile(state, fromTileId, action.playerId!, UNIT_KINDS).length === 0)
       return actionError('no-units', 'No units on attacking tile');
+    if (unitsOnTile(state, fromTileId, action.playerId!, COMBAT_UNIT_KINDS).length === 0)
+      return actionError('no-combat-units', 'You need at least one non-Noble unit to attack');
     if (getAttackedFrom(state).includes(fromTileId))
       return actionError('already-attacked', 'This tile has already attacked this turn');
     return null;
@@ -51,6 +56,8 @@ export const attackTileExecutor: ActionExecutor<AttackPayload> = {
     const playerId = action.playerId!;
     const events: GameEvent[] = [];
 
+    // Collect attackers (all unit kinds; Nobles count in the battle even if they
+    // can't initiate attacks — validator already ensured ≥1 combat unit is present)
     const attackerIds = unitsOnTile(state, fromTileId, playerId, UNIT_KINDS);
     const defenderIds = unitsOnTile(state, toTileId, undefined, UNIT_KINDS);
     const defenderOwner = getOwnership(state)[toTileId] ?? null;
@@ -71,10 +78,11 @@ export const attackTileExecutor: ActionExecutor<AttackPayload> = {
       ? [{ defenseMultiplier: STRUCTURE_STATS[defStructure.kind]?.defenseMultiplier ?? 1.0 }]
       : [];
 
-    const result = resolveAttack(attackers, defenders, tileProps, structureEffects);
+    const result = resolveAttack(attackers, defenders, tileProps, structureEffects, state.rng);
 
-    for (const id of result.defenderLosses) state.pieces.delete(id);
-    for (const id of result.attackerLosses) state.pieces.delete(id);
+    // Safe deletion: collect IDs first, then delete outside the iterator
+    const toRemove = [...result.defenderLosses, ...result.attackerLosses];
+    for (const id of toRemove) state.pieces.delete(id);
 
     events.push({
       type: 'battle-resolved',
@@ -93,16 +101,29 @@ export const attackTileExecutor: ActionExecutor<AttackPayload> = {
     if (result.tileConquered) {
       const ownership = { ...getOwnership(state), [toTileId]: playerId };
       state.extras['k:ownership'] = ownership;
+
+      // Clear any pending/confirmed occupation for the conquered tile — the "still
+      // unowned" guard in end-turn would handle it, but explicit cleanup prevents stale entries
+      const pending   = { ...getPendingOccupations(state) };
+      const confirmed = { ...getConfirmedOccupations(state) };
+      delete pending[toTileId];
+      delete confirmed[toTileId];
+      state.extras['k:pendingOccupations']   = pending;
+      state.extras['k:confirmedOccupations'] = confirmed;
+
       events.push({ type: 'tile-captured', playerId, payload: { tileId: toTileId, previousOwner: defenderOwner } });
 
       if (defenderOwner) {
         const capitals = getCapitals(state);
         if (capitals[defenderOwner] === toTileId) {
+          // Capital captured → eliminate the player: remove all their pieces and tiles
           state.players.eliminate(defenderOwner);
 
-          for (const [id, piece] of state.pieces) {
-            if (piece.owner === defenderOwner) state.pieces.delete(id);
-          }
+          const eliminatedPieceIds = [...state.pieces.entries()]
+            .filter(([, piece]) => piece.owner === defenderOwner)
+            .map(([id]) => id);
+          for (const id of eliminatedPieceIds) state.pieces.delete(id);
+
           const neutralised = { ...getOwnership(state) };
           for (const [tid, owner] of Object.entries(neutralised)) {
             if (owner === defenderOwner) delete neutralised[tid];
@@ -110,6 +131,14 @@ export const attackTileExecutor: ActionExecutor<AttackPayload> = {
           state.extras['k:ownership'] = neutralised;
 
           events.push({ type: 'player-eliminated', payload: { eliminatedPlayerId: defenderOwner, byPlayerId: playerId } });
+        } else {
+          // Non-capital capture: transfer structure ownership to the attacker
+          if (defStructure) {
+            const oldPiece = state.pieces.get(defStructure.id);
+            if (oldPiece) {
+              state.pieces.set(defStructure.id, { ...oldPiece, owner: playerId } as Piece);
+            }
+          }
         }
       }
     }

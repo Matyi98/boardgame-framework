@@ -55,6 +55,13 @@ export interface UnitDef {
    * true  → unit may traverse and settle on unowned tiles (Noble mechanic).
    */
   readonly canOccupyUnowned: boolean;
+  /**
+   * Whether this unit type may participate as an attacker in attack-tile.
+   * false → unit cannot initiate or count toward the attack force (Noble).
+   * Prevents Nobles from being used as military battering rams while keeping
+   * them as occupation-specialist pieces.
+   */
+  readonly canAttack: boolean;
 }
 
 export const UNIT_DEFS: Readonly<Record<UnitKind, UnitDef>> = {
@@ -69,6 +76,7 @@ export const UNIT_DEFS: Readonly<Record<UnitKind, UnitDef>> = {
     movement:         1,
     foodPerRound:     1,
     canOccupyUnowned: false,
+    canAttack:        true,
   },
   'cannoneer': {
     kind:             'cannoneer',
@@ -81,6 +89,7 @@ export const UNIT_DEFS: Readonly<Record<UnitKind, UnitDef>> = {
     movement:         1,
     foodPerRound:     2,
     canOccupyUnowned: false,
+    canAttack:        true,
   },
   'noble': {
     kind:             'noble',
@@ -93,6 +102,7 @@ export const UNIT_DEFS: Readonly<Record<UnitKind, UnitDef>> = {
     movement:         2,
     foodPerRound:     1,
     canOccupyUnowned: true,
+    canAttack:        false,
   },
 };
 
@@ -102,4 +112,9 @@ export const UNIT_KINDS = new Set<string>(Object.keys(UNIT_DEFS));
 /** Unit kinds that may move onto and occupy unowned tiles. */
 export const OCCUPYING_UNIT_KINDS = new Set<string>(
   Object.values(UNIT_DEFS).filter((d) => d.canOccupyUnowned).map((d) => d.kind),
+);
+
+/** Unit kinds that may participate as attackers in attack-tile. */
+export const COMBAT_UNIT_KINDS = new Set<string>(
+  Object.values(UNIT_DEFS).filter((d) => d.canAttack).map((d) => d.kind),
 );

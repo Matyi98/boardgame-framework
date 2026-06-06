@@ -14,7 +14,7 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 | `pieces.ts` | PieceRegistry; UNIT_STATS/UNIT_KINDS derived from units.ts; STRUCTURE_STATS/BUILDABLE_STRUCTURES derived from structures.ts |
 | `economy.ts` | Pure math: calculateTileIncome, calculateStructureFoodCost, STRUCTURE_INCOME_EFFECTS (derived from structures.ts) |
 | `map.ts` | buildKingdomsMap() — 61-tile 4-ring hex, KINGDOMS_STARTING_COORDS |
-| `combat.ts` | resolveAttack() — pure function, no framework imports |
+| `combat.ts` | resolveAttack() — pure function, no framework imports; wraps framework rules/combat.ts |
 | `connectivity.ts` | Thin wrapper over utils/connectivity.ts. Adds playerOwnedTiles(), playerGateTileIds(), playerConnectedTiles() |
 | `income.ts` | computeIncome(), computeFoodCost(), chooseAttritionVictims() — state integration layer |
 | `actions/` | Modular action files (one file per action group): helpers, recruit, move, attack, build, develop, end-turn |
@@ -28,6 +28,10 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 | `units/README.md` | Unit design table, movement rules, Noble capture sequence with turn-by-turn example |
 
 ## Key invariants
+- `COMBAT_UNIT_KINDS` ⊂ `UNIT_KINDS`: units with `canAttack: false` (Nobles) appear in
+  `UNIT_KINDS` but NOT `COMBAT_UNIT_KINDS`. attack-tile validator requires ≥1 COMBAT_UNIT
+  on the attacking tile — Nobles alone cannot initiate attacks but do fight alongside
+  combat units once a battle begins (their attack stat still contributes to strength)
 - `k:ownership` is the source of truth for tile ownership — NOT piece presence
 - A tile stays owned even when all units leave (armies can relocate safely)
 - A tile becomes neutral only via `attackTileExecutor` when ownership is transferred
@@ -60,7 +64,9 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 | Change gold exchange rate | Edit EXCHANGE_RATE in economy.ts |
 | Change develop cost | Edit DEVELOP_COST in economy.ts |
 | Change attrition priority | Edit ATTRITION_PRIORITY in economy.ts |
-| Change combat formula | Edit resolveAttack() in ../../rules/combat.ts |
+| Change combat formula (strength scaling) | Edit resolveAttack() in ../../rules/combat.ts |
+| Change casualty fractions (0.5 / 0.4) | Edit resolveAttack() in ../../rules/combat.ts |
+| Add new unit that cannot attack | Set `canAttack: false` in `units.ts` UNIT_DEFS — COMBAT_UNIT_KINDS auto-updates |
 | Change terrain defense | Edit defenseBonus in terrain.ts meta |
 | Add a new action | Create `actions/<name>.ts`, export from `actions/index.ts`, register in scenario.ts |
 | Change starting resources | Edit onSetup() in scenario.ts |

@@ -8,9 +8,10 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 | File | Purpose |
 |------|---------|
 | `structures.ts` | **SINGLE SOURCE OF TRUTH** for all structure data (costs, hp, defense, income, food/round) |
+| `units.ts` | **SINGLE SOURCE OF TRUTH** for all unit data (costs, hp, attack, defense, movement, food/round, canOccupyUnowned) |
 | `terrain.ts` | TerrainRegistry with defenseBonus + moveCost in meta |
 | `resources.ts` | ResourceRegistry: wood, food, iron, gold |
-| `pieces.ts` | PieceRegistry + UNIT_STATS; STRUCTURE_STATS/BUILDABLE_STRUCTURES derived from structures.ts |
+| `pieces.ts` | PieceRegistry; UNIT_STATS/UNIT_KINDS derived from units.ts; STRUCTURE_STATS/BUILDABLE_STRUCTURES derived from structures.ts |
 | `economy.ts` | Pure math: calculateTileIncome, calculateStructureFoodCost, STRUCTURE_INCOME_EFFECTS (derived from structures.ts) |
 | `map.ts` | buildKingdomsMap() — 61-tile 4-ring hex, KINGDOMS_STARTING_COORDS |
 | `combat.ts` | resolveAttack() — pure function, no framework imports |
@@ -22,6 +23,7 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 | `scenario.ts` | Wires everything into kingdomsScenario + buildView() |
 | `index.ts` | Public re-exports |
 | `structures/README.md` | Structure design table, validation rules, architecture rationale |
+| `units/README.md` | Unit design table, movement rules, Noble capture sequence with turn-by-turn example |
 
 ## Key invariants
 - `k:ownership` is the source of truth for tile ownership — NOT piece presence
@@ -32,13 +34,19 @@ See `README.md` for player-facing documentation. See `docs/kingdoms/` for ADRs.
 - `k:developed` is a `string[]` of developed tile IDs; income.ts reads it for develop bonus
 - Player elimination is tracked via `state.players.eliminate(id)` → `Player.status = 'eliminated'`
   **Never** write to a `k:eliminated` extras array — that pattern was removed in Step 2
+- `k:pendingOccupations` / `k:confirmedOccupations` drive the Noble two-turn capture pipeline
+  (see units/README.md); endTurnExecutor promotes pending→confirmed then resolves confirmed
 
 ## Common tasks
 | Task | Where |
 |------|-------|
 | Add a new structure | Add ONE entry to `structures.ts` STRUCTURE_DEFS — pieces.ts and economy.ts derive automatically |
 | Change structure balance (cost/defense/income/food) | Edit `structures.ts` STRUCTURE_DEFS only |
-| Add a new unit type | Add to UNIT_STATS + one `registry.register()` call in `pieces.ts` |
+| Add a new unit type | Add ONE entry to `units.ts` UNIT_DEFS — pieces.ts derives UNIT_STATS and registry automatically |
+| Change unit balance (cost/attack/defense/movement/food) | Edit `units.ts` UNIT_DEFS only |
+| Allow a new unit to occupy unowned tiles | Set `canOccupyUnowned: true` in `units.ts` UNIT_DEFS |
+| Change which structures allow recruitment | Edit `RECRUIT_STRUCTURES` set in `actions/recruit.ts` |
+| Change attrition priority | Edit ATTRITION_PRIORITY in economy.ts |
 | Change tile gold yield | Edit GOLD_PER_ECONOMIC_VALUE in economy.ts |
 | Change resource yield | Edit BASE_RESOURCE_YIELD in economy.ts |
 | Change gold exchange rate | Edit EXCHANGE_RATE in economy.ts |

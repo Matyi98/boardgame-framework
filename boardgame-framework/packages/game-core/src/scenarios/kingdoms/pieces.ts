@@ -1,16 +1,26 @@
 /**
- * PieceRegistry and balance constants for Kingdoms of Dominion.
+ * PieceRegistry and derived stat constants for Kingdoms of Dominion.
  *
- * Structure constants (costs, defense, income effects, food) come from
- * structures.ts — the single source of truth. This file only adds:
- *   - UNIT_STATS: military unit combat and food constants
- *   - kingdomsPieces: the PieceRegistry that feeds makeUnitFromRegistry()
+ * Both unit and structure data have their own Single Source of Truth files:
+ *   units.ts      → combat stats, movement, food, occupation flag, recruit cost
+ *   structures.ts → hp, defense, income effects, food cost, build cost
  *
- * Adding a new unit = add to UNIT_STATS + one registry.register() call.
- * Adding a new structure = edit structures.ts only (no change needed here).
+ * This file only wires those definitions into the PieceRegistry so the rest of
+ * the framework (makeUnitFromRegistry, cost lookup, limit enforcement) can work
+ * without knowing about either source file.
+ *
+ * Adding a new unit     → edit units.ts only (registry entry built here automatically)
+ * Adding a new structure → edit structures.ts only (registry entry built here automatically)
  */
 
 import { PieceRegistry } from '../../pieces/piece-registry.js';
+import {
+  UNIT_DEFS,
+  UNIT_KINDS,
+  OCCUPYING_UNIT_KINDS,
+  type UnitKind,
+  type UnitDef,
+} from './units.js';
 import {
   STRUCTURE_DEFS,
   STRUCTURE_KINDS,
@@ -19,40 +29,52 @@ import {
   type StructureDef,
 } from './structures.js';
 
-// Re-export structure constants so callers can still import from pieces.ts
-// without knowing about structures.ts.
-export { STRUCTURE_KINDS, BUILDABLE_STRUCTURES };
-export type { StructureKind, StructureDef };
+// Re-export so callers that import from pieces.ts don't need to know where things live
+export { UNIT_KINDS, OCCUPYING_UNIT_KINDS, STRUCTURE_KINDS, BUILDABLE_STRUCTURES };
+export type { UnitKind, UnitDef, StructureKind, StructureDef };
 
-// ── Unit stats ─────────────────────────────────────────────────────────────────
-
-export interface UnitStats {
-  attack: number;
-  foodPerRound: number;
-  hp: number;
-}
-
-/** Authoritative balance constants for military units. */
-export const UNIT_STATS: Readonly<Record<string, UnitStats>> = {
-  'spearman':  { attack: 2, foodPerRound: 1, hp: 1 },
-  'cannoneer': { attack: 5, foodPerRound: 2, hp: 2 },
-  'noble':     { attack: 3, foodPerRound: 1, hp: 1 },
-};
-
-// ── Structure stats (derived from STRUCTURE_DEFS) ─────────────────────────────
-
-export interface StructureStats {
-  hp: number;
-  defenseMultiplier: number;
-}
+// ── Derived stat shapes ───────────────────────────────────────────────────────
 
 /**
- * Derived from STRUCTURE_DEFS in structures.ts.
+ * Runtime-accessible unit combat and logistics stats, keyed by unit kind.
+ * Derived from UNIT_DEFS — the single source of truth in units.ts.
  *
- * Used by scenario.ts (initial HP) and actions/attack.ts (defense multiplier
- * during combat). Kept as a named export so callers don't need to import
- * structures.ts directly.
+ * economy.ts reads foodPerRound from here.
+ * Validators may read movement / attack as needed.
+ * These are also stored on Piece.stats via makeUnitFromRegistry().
  */
+export interface UnitStats {
+  readonly attack: number;
+  readonly defense: number;
+  readonly movement: number;
+  readonly foodPerRound: number;
+  readonly hp: number;
+}
+
+export const UNIT_STATS: Readonly<Record<string, UnitStats>> = Object.fromEntries(
+  Object.entries(UNIT_DEFS).map(([kind, def]) => [
+    kind,
+    {
+      attack:       def.attack,
+      defense:      def.defense,
+      movement:     def.movement,
+      foodPerRound: def.foodPerRound,
+      hp:           def.hp,
+    },
+  ]),
+);
+
+/**
+ * Structure combat and income stats, keyed by structure kind.
+ * Derived from STRUCTURE_DEFS — the single source of truth in structures.ts.
+ *
+ * Used by scenario.ts (initial HP) and actions/attack.ts (defenseMultiplier).
+ */
+export interface StructureStats {
+  readonly hp: number;
+  readonly defenseMultiplier: number;
+}
+
 export const STRUCTURE_STATS: Readonly<Record<string, StructureStats>> = Object.fromEntries(
   Object.entries(STRUCTURE_DEFS).map(([kind, def]) => [
     kind,
@@ -60,74 +82,47 @@ export const STRUCTURE_STATS: Readonly<Record<string, StructureStats>> = Object.
   ]),
 );
 
-export const UNIT_KINDS = new Set(Object.keys(UNIT_STATS));
-
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 /**
  * PieceRegistry for kingdoms-v1.
  *
- * Structure entries are built programmatically from STRUCTURE_DEFS, so a new
- * structure in structures.ts automatically appears in the registry.
- *
- * Unit entries remain explicit — unit meta (category, cost, limits) isn't
- * captured by UNIT_STATS and doesn't have a parallel canonical table yet.
+ * Both structures and units are now built programmatically from their definition
+ * tables, so adding a new piece type to either source file automatically creates
+ * the registry entry here — no manual wiring needed.
  */
-
 function buildRegistry(): PieceRegistry {
   const registry = new PieceRegistry();
 
-  // Register all structures from STRUCTURE_DEFS
+  // ── Structures (from STRUCTURE_DEFS) ──────────────────────────────────────
   for (const def of Object.values(STRUCTURE_DEFS)) {
     registry.register({
-      kind:         def.kind,
-      category:     'building',
-      displayName:  def.displayName,
+      kind:        def.kind,
+      category:    'building',
+      displayName: def.displayName,
       ...(Object.keys(def.buildCost).length > 0 ? { cost: def.buildCost } : {}),
       ...(def.limitPerPlayer !== undefined ? { limitPerPlayer: def.limitPerPlayer } : {}),
       defaultStats: { hp: def.hp, defenseMultiplier: def.defenseMultiplier },
     });
   }
 
-  // Register military units
-  registry.register({
-    kind: 'spearman',
-    category: 'unit',
-    displayName: 'Spearman',
-    cost: { iron: 1, food: 1 },
-    limitPerPlayer: 20,
-    defaultStats: {
-      attack:       UNIT_STATS['spearman']!.attack,
-      foodPerRound: UNIT_STATS['spearman']!.foodPerRound,
-      hp:           UNIT_STATS['spearman']!.hp,
-    },
-  });
-
-  registry.register({
-    kind: 'cannoneer',
-    category: 'unit',
-    displayName: 'Cannoneer',
-    cost: { iron: 3, food: 2 },
-    limitPerPlayer: 8,
-    defaultStats: {
-      attack:       UNIT_STATS['cannoneer']!.attack,
-      foodPerRound: UNIT_STATS['cannoneer']!.foodPerRound,
-      hp:           UNIT_STATS['cannoneer']!.hp,
-    },
-  });
-
-  registry.register({
-    kind: 'noble',
-    category: 'unit',
-    displayName: 'Noble',
-    cost: { gold: 5 },
-    limitPerPlayer: 2,
-    defaultStats: {
-      attack:       UNIT_STATS['noble']!.attack,
-      foodPerRound: UNIT_STATS['noble']!.foodPerRound,
-      hp:           UNIT_STATS['noble']!.hp,
-    },
-  });
+  // ── Units (from UNIT_DEFS) ────────────────────────────────────────────────
+  for (const def of Object.values(UNIT_DEFS)) {
+    registry.register({
+      kind:        def.kind,
+      category:    'unit',
+      displayName: def.displayName,
+      cost:        def.buildCost,
+      ...(def.limitPerPlayer !== undefined ? { limitPerPlayer: def.limitPerPlayer } : {}),
+      defaultStats: {
+        attack:       def.attack,
+        defense:      def.defense,
+        movement:     def.movement,
+        foodPerRound: def.foodPerRound,
+        hp:           def.hp,
+      },
+    });
+  }
 
   return registry;
 }

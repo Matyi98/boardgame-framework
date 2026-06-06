@@ -182,10 +182,12 @@ export const kingdomsScenario: Scenario = {
       inv.add('gold', 2);
     });
 
-    state.extras['k:ownership']      = ownership;
-    state.extras['k:capitals']       = capitals;
-    state.extras['k:nextPieceId']    = 100; // start above setup piece IDs
-    state.extras['k:movedThisTurn']  = [];
-    state.extras['k:attackedFrom']   = [];
+    state.extras['k:ownership']            = ownership;
+    state.extras['k:capitals']             = capitals;
+    state.extras['k:nextPieceId']          = 100; // start above setup piece IDs
+    state.extras['k:movedThisTurn']        = [];
+    state.extras['k:attackedFrom']         = [];
+    state.extras['k:pendingOccupations']   = {};
+    state.extras['k:confirmedOccupations'] = {};
   },
 };

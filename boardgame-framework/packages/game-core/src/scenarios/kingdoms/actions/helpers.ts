@@ -35,6 +35,45 @@ export function getDeveloped(state: GameState): Set<string> {
   return raw ? new Set(raw) : new Set();
 }
 
+/** Shape of a Noble occupation entry. */
+export interface OccupationEntry {
+  nobleId: string;
+  playerId: string;
+}
+
+/**
+ * Occupations initiated THIS turn (Noble just moved to unowned tile).
+ * Promoted to confirmedOccupations at end-of-turn; not yet eligible for capture.
+ */
+export function getPendingOccupations(state: GameState): Record<string, OccupationEntry> {
+  return (state.extras['k:pendingOccupations'] as Record<string, OccupationEntry>) ?? {};
+}
+
+/**
+ * Occupations that were pending at the previous end-of-turn for this player.
+ * Noble still on the tile at THIS end-of-turn → tile captured.
+ */
+export function getConfirmedOccupations(state: GameState): Record<string, OccupationEntry> {
+  return (state.extras['k:confirmedOccupations'] as Record<string, OccupationEntry>) ?? {};
+}
+
+/**
+ * Cancel any pending/confirmed occupation held by a specific Noble piece.
+ * Called when a Noble moves away from an occupied tile.
+ */
+export function cancelOccupationByNoble(state: GameState, nobleId: string): void {
+  const pending   = { ...getPendingOccupations(state) };
+  const confirmed = { ...getConfirmedOccupations(state) };
+  for (const tileId of Object.keys(pending)) {
+    if (pending[tileId]?.nobleId === nobleId) delete pending[tileId];
+  }
+  for (const tileId of Object.keys(confirmed)) {
+    if (confirmed[tileId]?.nobleId === nobleId) delete confirmed[tileId];
+  }
+  state.extras['k:pendingOccupations']   = pending;
+  state.extras['k:confirmedOccupations'] = confirmed;
+}
+
 /** Monotonically increasing piece ID generator. Never reuse IDs even after pieces die. */
 export function nextId(state: GameState): string {
   const n = ((state.extras['k:nextPieceId'] as number) ?? 0) + 1;

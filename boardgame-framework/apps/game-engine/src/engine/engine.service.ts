@@ -51,7 +51,7 @@ export class EngineService {
 
     // Persist a full renderable view snapshot so clients navigating to the
     // game page after the bus event fires can still bootstrap their UI.
-    const view = this.buildView(state, input.players as Player[], null);
+    const view = this.buildView(state, input.players as Player[], null, scenario);
     await this.store.saveView(input.gameId, view);
 
     this.bus.publish<GameBusEvent>(
@@ -120,7 +120,7 @@ export class EngineService {
 
     // Update the view snapshot so page refreshes recover current state
     const players = [...instance.state.players.all()];
-    const view = this.buildView(instance.state, players, victory ?? null);
+    const view = this.buildView(instance.state, players, victory ?? null, instance.scenario);
     await this.store.saveView(input.gameId, view);
 
     if (gameEndedEvent) {
@@ -148,16 +148,22 @@ export class EngineService {
   }
 
   /**
-   * Builds a serialisable view snapshot that matches the frontend DemoView.
-   * Updated after every mutation so the /init REST endpoint always returns
-   * current state (tile claims, VPs, active player, game over info).
+   * Builds a serialisable view snapshot for the frontend. Delegates to the
+   * scenario's own buildView() when available (see Scenario interface and ADR-001).
+   * Falls back to the Frontier-compatible shape for scenarios that pre-date
+   * the buildView() convention.
    */
   private buildView(
     state: GameState,
     players: Player[],
     victory: { winner: string | null; reason: string } | null,
+    scenario?: import('@bgf/game-core').Scenario,
   ): Record<string, unknown> {
-    // Map tileId → owner from pieces on tiles
+    if (scenario?.buildView) {
+      return scenario.buildView(state, players, victory);
+    }
+
+    // Frontier fallback: infer tile claims from piece locations
     const claimMap = new Map<string, string>();
     for (const [, piece] of state.pieces) {
       if (piece.location.kind === 'tile') {

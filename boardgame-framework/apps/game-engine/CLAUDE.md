@@ -19,20 +19,26 @@ The only service that imports `@bgf/game-core`. It:
 | `src/persistence/game-store.service.ts` | Redis: `save/load` state + `saveView/loadView` for view snapshots |
 | `src/persistence/redis.module.ts` | ioredis connection |
 
-## buildView() — critical function
-`engine.service.ts` → `buildView(state, players, victory)` converts `GameState` (class instances) to a plain JSON object that the frontend's `DemoView` type can consume.
+## buildView() — per-scenario view building (ADR-001)
+`engine.service.ts` → `buildView(state, players, victory, scenario)` now delegates to
+`scenario.buildView()` when the scenario implements it. Only falls back to the old
+hardcoded Frontier logic when `scenario.buildView` is absent.
 
-**If you add a new field to the frontend `DemoView`**, you must also add it here.
-
-Current fields emitted:
-```
-status, tiles[], players[], currentActivePlayer, winner, winReason, homeTiles, round
-```
+**For any new scenario**: implement `buildView()` in the scenario object.
+**For Frontier fields**: still hardcoded in the engine fallback — no change needed.
 
 ## Adding a new scenario
-1. Create scenario in `packages/game-core/src/scenarios/`
-2. Import it in `src/engine/scenario.registry.ts` and call `this.register(myScenario)`
-3. Rebuild this service
+1. Create scenario directory in `packages/game-core/src/scenarios/<name>/`
+2. Implement the `Scenario` interface (including `buildView()` for custom view shape)
+3. Export from `packages/game-core/src/scenarios/index.ts`
+4. Register in `src/engine/engine.module.ts` → `onModuleInit()`
+5. Rebuild this service
+
+## Registered scenarios
+| ID | Name | File |
+|----|------|------|
+| `demo-v1` | Frontier | `packages/game-core/src/scenarios/demo/` |
+| `kingdoms-v1` | Kingdoms of Dominion | `packages/game-core/src/scenarios/kingdoms/` |
 
 ## RabbitMQ subscriptions
 - **Exchange**: `lobby.events` / routing key `lobby.*.game-starting` / queue `engine-game-starting` (shared — one engine picks it up)

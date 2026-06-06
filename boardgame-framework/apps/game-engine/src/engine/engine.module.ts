@@ -1,5 +1,5 @@
 import { Module, OnModuleInit } from '@nestjs/common';
-import { demoScenario } from '@bgf/game-core';
+import { demoScenario, kingdomsScenario } from '@bgf/game-core';
 import { EngineService } from './engine.service.js';
 import { GameRunnerService } from './game-runner.service.js';
 import { ScenarioRegistry } from './scenario.registry.js';
@@ -18,5 +18,6 @@ export class EngineModule implements OnModuleInit {
   /** Register built-in scenarios once NestJS has wired all providers. */
   onModuleInit(): void {
     this.scenarios.register(demoScenario);
+    this.scenarios.register(kingdomsScenario);
   }
 }

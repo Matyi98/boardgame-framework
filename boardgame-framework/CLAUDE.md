@@ -1,8 +1,15 @@
 # CLAUDE.md — Boardgame Framework Root
 
 ## What this repo is
-A multi-service TypeScript monorepo (pnpm workspaces) for hosting online turn-based board games.  
-The only game currently implemented is **Frontier** — a 19-tile hex territory-expansion game with dice rolls.
+A multi-service TypeScript monorepo (pnpm workspaces) for hosting online turn-based board games.
+
+| Scenario ID | Name | Status |
+|-------------|------|--------|
+| `demo-v1` | **Frontier** | ✅ Complete with frontend |
+| `kingdoms-v1` | **Kingdoms of Dominion** | 🔧 Backend complete, frontend pending |
+
+Frontier is a 37-tile hex territory-expansion game. Kingdoms of Dominion is a 61-tile military
+conquest game with four resources, units, structures, and player elimination.
 
 ## How to run locally
 ```bash
@@ -32,11 +39,12 @@ packages/
   event-bus/         RabbitMQ wrapper
   shared-types/      Cross-service DTOs
 docs/
-  project-map.md     File-by-file map of the whole repo
-  data-flow.md       Click → screen data flow with file refs
+  project-map.md       File-by-file map of the whole repo
+  data-flow.md         Click → screen data flow with file refs
   adding-scenarios.md  How to add a new game variant
-  architecture.md    Component responsibilities and scaling
-  module-guide.md    game-core module deep-dive
+  architecture.md      Component responsibilities and scaling
+  module-guide.md      game-core module deep-dive
+  kingdoms/            Kingdoms of Dominion design docs (ADRs, data model, action catalogue)
 ```
 
 ## Key architectural rules
@@ -54,8 +62,10 @@ docs/
 | How does the frontend update after an event? | `apps/web/src/store/game.ts` → `applyEvent()` |
 | How is the hex board rendered? | `apps/web/src/components/Board.tsx` |
 | Where is Frontier's game logic? | `packages/game-core/src/scenarios/demo/` |
+| Where is Kingdoms game logic? | `packages/game-core/src/scenarios/kingdoms/` |
+| Where are Kingdoms design docs? | `docs/kingdoms/` |
 | How are turns and rounds managed? | `packages/game-core/src/rounds/round-manager.ts` |
-| How is the map built? | `packages/game-core/src/scenarios/demo/map.ts` |
+| How does each scenario build its view? | `Scenario.buildView()` — see ADR-001 |
 | Where do dice live? | `packages/game-core/src/dice/` |
 
 ## Common tasks

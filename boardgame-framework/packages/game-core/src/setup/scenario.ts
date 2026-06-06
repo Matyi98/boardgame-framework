@@ -48,4 +48,15 @@ export interface Scenario {
    * seed inventories, or store scenario-specific metadata in state.extras.
    */
   onSetup?(state: GameState, players: ReadonlyArray<Player>): void;
+
+  /**
+   * Optional scenario-owned view builder. When present, the engine delegates
+   * to this instead of its generic fallback. Required for any scenario that
+   * exposes fields beyond the default Frontier view shape. See ADR-001.
+   */
+  buildView?(
+    state: GameState,
+    players: ReadonlyArray<Player>,
+    victory: { winner: string | null; reason: string } | null,
+  ): Record<string, unknown>;
 }

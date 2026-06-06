@@ -1,4 +1,6 @@
 import type { GameMap } from '../map/game-map.js';
+import type { GameState } from '../state/game-state.js';
+import type { Player } from '../players/player.js';
 import type { TerrainRegistry } from '../map/terrain.js';
 import type { ResourceRegistry } from '../resources/resource-type.js';
 import type { PieceRegistry } from '../pieces/piece-registry.js';
@@ -39,4 +41,11 @@ export interface Scenario {
 
   /** Build the starting map for this scenario (may be randomized via RNG). */
   buildMap(playerCount: number, seed: string): GameMap;
+
+  /**
+   * Optional post-setup hook called after the initial GameState is constructed
+   * but before the game transitions to 'playing'. Use it to pre-place pieces,
+   * seed inventories, or store scenario-specific metadata in state.extras.
+   */
+  onSetup?(state: GameState, players: ReadonlyArray<Player>): void;
 }

@@ -1,4 +1,17 @@
 /**
+ * Hash an arbitrary string seed to a non-zero uint32 suitable for SeededRandom.
+ * Uses FNV-1a so different strings almost never collide.
+ */
+export function seedFromString(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1; // unsigned, never zero
+}
+
+/**
  * Abstract source of randomness. The framework never uses Math.random()
  * directly — everything routes through RandomSource so games are reproducible
  * given a seed (essential for replay, debugging and unit tests).

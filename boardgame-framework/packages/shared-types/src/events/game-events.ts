@@ -8,9 +8,11 @@ export interface GameBusEvent {
   gameId: string;
   /** Monotonic seq assigned by the engine. */
   seq: number;
-  /** Domain event type, e.g. `'dice-rolled'`. */
+  /** Domain event type, e.g. `'tile-claimed'`. */
   type: string;
   payload: unknown;
+  /** Player who caused this event (when applicable). */
+  playerId?: string;
   /**
    * Optional player id this message is private to. The gateway must only
    * forward it to that player's sockets.

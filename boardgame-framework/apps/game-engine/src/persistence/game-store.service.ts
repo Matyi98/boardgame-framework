@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { GameState } from '@bgf/game-core';
 import { REDIS } from './redis.module.js';
 
@@ -31,6 +31,20 @@ export class GameStoreService {
 
   async delete(gameId: string): Promise<void> {
     await this.redis.del(this.key(gameId));
+  }
+
+  /**
+   * Save the current renderable view snapshot so clients that navigate to the
+   * game page after events fired can still bootstrap their UI. Updated after
+   * every command, not just at game start.
+   */
+  async saveView(gameId: string, view: unknown): Promise<void> {
+    await this.redis.set(`engine:view:${gameId}`, JSON.stringify(view));
+  }
+
+  async loadView(gameId: string): Promise<unknown | null> {
+    const raw = await this.redis.get(`engine:view:${gameId}`);
+    return raw ? JSON.parse(raw) : null;
   }
 
   private key(gameId: string): string {

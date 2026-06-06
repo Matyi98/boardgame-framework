@@ -3,7 +3,7 @@ import type { Player } from '../players/player.js';
 import { PlayerManager } from '../players/player-manager.js';
 import { ResourcePool } from '../resources/resource-pool.js';
 import { Inventory } from '../resources/inventory.js';
-import { SeededRandom } from '../dice/random.js';
+import { SeededRandom, seedFromString } from '../dice/random.js';
 import { RoundManager } from '../rounds/round-manager.js';
 import { ActionHistory } from '../actions/action-history.js';
 import type { GameState } from '../state/game-state.js';
@@ -29,13 +29,13 @@ export function createGameState(opts: GameSetupOptions): GameState {
     );
   }
 
-  const rng = new SeededRandom(seed);
+  const rng = new SeededRandom(seedFromString(seed));
   const playerManager = new PlayerManager(players);
   const map = scenario.buildMap(players.length, seed);
 
   const inventories = new Map(players.map((p) => [p.id, new Inventory()]));
 
-  return {
+  const state: GameState = {
     gameId,
     scenarioId: scenario.id,
     status: 'setup',
@@ -51,4 +51,7 @@ export function createGameState(opts: GameSetupOptions): GameState {
     history: new ActionHistory(),
     extras: {},
   };
+
+  scenario.onSetup?.(state, players);
+  return state;
 }

@@ -1,4 +1,11 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnApplicationShutdown,
+  OnModuleInit,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Exchange, RoutingKey, BusPublisher } from '@bgf/event-bus';
 import type {
@@ -9,16 +16,24 @@ import type {
 } from '@bgf/shared-types';
 import { RoomEntity } from './room.entity.js';
 
-/**
- * In-memory rooms with bus-driven fan-out. Production would persist rooms to
- * Postgres and use Redis pub/sub for cross-instance state, but the event bus
- * surface is the same.
- */
+const ROOM_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
+
 @Injectable()
-export class LobbyService {
+export class LobbyService implements OnModuleInit, OnApplicationShutdown {
+  private readonly logger = new Logger(LobbyService.name);
   private readonly rooms = new Map<string, RoomEntity>();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly bus: BusPublisher) {}
+
+  onModuleInit(): void {
+    this.cleanupTimer = setInterval(() => this.purgeAbandonedRooms(), CLEANUP_INTERVAL_MS);
+  }
+
+  onApplicationShutdown(): void {
+    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+  }
 
   async listRooms(): Promise<ReadonlyArray<RoomSummary>> {
     return [...this.rooms.values()].map((r) => r.toSummary());
@@ -30,7 +45,7 @@ export class LobbyService {
     return room.toDetail();
   }
 
-  async createRoom(userId: string, req: CreateRoomRequest): Promise<RoomDetail> {
+  async createRoom(userId: string, displayName: string, req: CreateRoomRequest): Promise<RoomDetail> {
     const room = new RoomEntity({
       roomId: randomUUID(),
       name: req.name,
@@ -38,17 +53,18 @@ export class LobbyService {
       hostId: userId,
       maxPlayers: req.maxPlayers,
     });
-    room.addPlayer(userId);
+    room.addPlayer(userId, displayName);
     this.rooms.set(room.roomId, room);
     this.publish(room.roomId, { type: 'room-created', roomId: room.roomId, hostId: userId, at: Date.now() });
     return room.toDetail();
   }
 
-  async joinRoom(userId: string, roomId: string): Promise<RoomDetail> {
+  async joinRoom(userId: string, displayName: string, roomId: string): Promise<RoomDetail> {
     const room = this.rooms.get(roomId);
     if (!room) throw new NotFoundException('Room not found');
+    if (room.status !== 'open') throw new ForbiddenException('Room is no longer accepting players');
     if (room.isFull) throw new ForbiddenException('Room is full');
-    room.addPlayer(userId);
+    room.addPlayer(userId, displayName);
     this.publish(roomId, { type: 'player-joined', roomId, userId, at: Date.now() });
     return room.toDetail();
   }
@@ -65,14 +81,50 @@ export class LobbyService {
     const room = this.rooms.get(roomId);
     if (!room) throw new NotFoundException('Room not found');
     if (room.hostId !== userId) throw new ForbiddenException('Only the host can start the game');
-    if (!room.allReady) throw new ForbiddenException('Not all players are ready');
+    if (room.playerCount < 2) throw new ForbiddenException('Need at least 2 players to start');
+    if (!room.allReady) throw new ForbiddenException('All players must be ready before starting');
 
-    // The engine listens for `game-starting`, creates a GameState, and binds
-    // the room to the resulting gameId.
     const gameId = randomUUID();
     room.markStarting(gameId);
-    this.publish(roomId, { type: 'game-starting', roomId, gameId, at: Date.now() });
+    this.publish(roomId, {
+      type: 'game-starting',
+      roomId,
+      gameId,
+      scenarioId: room.scenarioId,
+      players: room.players(),
+      at: Date.now(),
+    });
     return room.toDetail();
+  }
+
+  async leaveRoom(userId: string, roomId: string): Promise<void> {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new NotFoundException('Room not found');
+    if (room.hostId === userId) throw new ForbiddenException('Host cannot leave — close the room instead');
+    room.removePlayer(userId);
+    this.publish(roomId, { type: 'player-left', roomId, userId, at: Date.now() });
+  }
+
+  async closeRoom(userId: string, roomId: string): Promise<void> {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new NotFoundException('Room not found');
+    if (room.hostId !== userId) throw new ForbiddenException('Only the host can close the room');
+    this.rooms.delete(roomId);
+    this.publish(roomId, { type: 'room-closed', roomId, reason: 'host-closed', at: Date.now() });
+    this.logger.log(`room closed by host roomId=${roomId}`);
+  }
+
+  private purgeAbandonedRooms(): void {
+    const cutoff = Date.now() - ROOM_TTL_MS;
+    let purged = 0;
+    for (const [id, room] of this.rooms) {
+      if (room.status === 'open' && room.createdAt.getTime() < cutoff) {
+        this.rooms.delete(id);
+        this.publish(id, { type: 'room-closed', roomId: id, reason: 'ttl-expired', at: Date.now() });
+        purged++;
+      }
+    }
+    if (purged > 0) this.logger.log(`purged ${purged} abandoned room(s)`);
   }
 
   private publish(roomId: string, event: LobbyEvent): void {

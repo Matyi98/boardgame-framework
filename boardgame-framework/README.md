@@ -2,7 +2,7 @@
 
 A modular framework for building online turn-based board games (Catan-style, Risk-style, and beyond). This repository is a **skeleton starting point** — the architecture, module layout, infrastructure and types are in place, but the game logic is intentionally left as stubs for you to fill in.
 
-> **Status:** scaffolding only. No game rules implemented yet.
+> **Status:** Frontier (territory expansion, 19-tile hex map, dice rolls) is playable.
 
 ## Quick start
 
@@ -30,7 +30,17 @@ docker compose up --scale game-engine=3 --scale realtime-gateway=2
 
 ## Architecture
 
-See [`docs/architecture.md`](./docs/architecture.md) for the full write-up. In short:
+See [`docs/architecture.md`](./docs/architecture.md) for the full write-up and the docs below for LLM/developer navigation:
+
+| Doc | Purpose |
+|-----|---------|
+| [`docs/project-map.md`](./docs/project-map.md) | Complete file-by-file map — what every file does |
+| [`docs/data-flow.md`](./docs/data-flow.md) | Precise trace from browser click → all screens, with file refs |
+| [`docs/adding-scenarios.md`](./docs/adding-scenarios.md) | Step-by-step guide to adding a new game variant |
+| [`docs/module-guide.md`](./docs/module-guide.md) | Deep-dive into `game-core` modules |
+| [`docs/getting-started.md`](./docs/getting-started.md) | Dev environment setup |
+
+In short:
 
 - **Web client** (React + Vite + Socket.io) talks to the backend through a single entry point.
 - **Traefik** is the API gateway — it routes `/api/auth`, `/api/lobby`, `/api/games` to the appropriate services and proxies `/ws` to the realtime gateway. Auto-configured from Docker labels, no config files to maintain.

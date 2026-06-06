@@ -1,6 +1,6 @@
 import { Global, Module, OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 export const REDIS = Symbol('REDIS');
 

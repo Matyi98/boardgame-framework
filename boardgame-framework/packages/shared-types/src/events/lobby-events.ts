@@ -51,5 +51,7 @@ export interface GameStartingEvent {
   type: 'game-starting';
   roomId: string;
   gameId: string;
+  scenarioId: string;
+  players: ReadonlyArray<{ id: string; displayName: string }>;
   at: number;
 }

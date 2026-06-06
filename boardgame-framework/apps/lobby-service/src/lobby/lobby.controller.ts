@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import type { Request } from 'express';
 import { LobbyService } from './lobby.service.js';
 import type {
   CreateRoomRequest,
@@ -8,6 +9,10 @@ import type {
   RoomSummary,
   SetReadyRequest,
 } from '@bgf/shared-types';
+
+interface AuthedRequest extends Request {
+  user: { sub: string; username: string };
+}
 
 /**
  * REST surface for lobby/matchmaking. JWT-protected; tokens are minted by
@@ -29,23 +34,34 @@ export class LobbyController {
   }
 
   @Post('rooms')
-  create(@Body() body: CreateRoomRequest): Promise<RoomDetail> {
-    // TODO: pull userId from request after wiring an @CurrentUser() decorator
-    return this.lobby.createRoom('TODO-userId', body);
+  create(@Req() req: AuthedRequest, @Body() body: CreateRoomRequest): Promise<RoomDetail> {
+    return this.lobby.createRoom(req.user.sub, req.user.username, body);
   }
 
   @Post('rooms/join')
-  join(@Body() body: JoinRoomRequest): Promise<RoomDetail> {
-    return this.lobby.joinRoom('TODO-userId', body.roomId);
+  join(@Req() req: AuthedRequest, @Body() body: JoinRoomRequest): Promise<RoomDetail> {
+    return this.lobby.joinRoom(req.user.sub, req.user.username, body.roomId);
   }
 
   @Post('rooms/:id/ready')
-  ready(@Param('id') id: string, @Body() body: SetReadyRequest): Promise<RoomDetail> {
-    return this.lobby.setReady('TODO-userId', id, body.ready);
+  ready(@Req() req: AuthedRequest, @Param('id') id: string, @Body() body: SetReadyRequest): Promise<RoomDetail> {
+    return this.lobby.setReady(req.user.sub, id, body.ready);
   }
 
   @Post('rooms/:id/start')
-  start(@Param('id') id: string): Promise<RoomDetail> {
-    return this.lobby.startGame('TODO-userId', id);
+  start(@Req() req: AuthedRequest, @Param('id') id: string): Promise<RoomDetail> {
+    return this.lobby.startGame(req.user.sub, id);
+  }
+
+  @Post('rooms/:id/leave')
+  @HttpCode(204)
+  leave(@Req() req: AuthedRequest, @Param('id') id: string): Promise<void> {
+    return this.lobby.leaveRoom(req.user.sub, id);
+  }
+
+  @Delete('rooms/:id')
+  @HttpCode(204)
+  close(@Req() req: AuthedRequest, @Param('id') id: string): Promise<void> {
+    return this.lobby.closeRoom(req.user.sub, id);
   }
 }

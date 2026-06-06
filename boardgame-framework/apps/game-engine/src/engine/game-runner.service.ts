@@ -1,7 +1,10 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap, Logger } from '@nestjs/common';
 import { BusConsumer, Exchange } from '@bgf/event-bus';
 import type { GameCommandMessage, GameStartingEvent } from '@bgf/shared-types';
+import type { Player } from '@bgf/game-core';
 import { EngineService } from './engine.service.js';
+
+const PLAYER_COLORS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple'] as const;
 
 /**
  * Bridges the bus to the engine. Two subscriptions:
@@ -13,7 +16,7 @@ import { EngineService } from './engine.service.js';
  *      others reject and re-enqueue (handled inside EngineService).
  */
 @Injectable()
-export class GameRunnerService implements OnModuleInit {
+export class GameRunnerService implements OnApplicationBootstrap {
   private readonly logger = new Logger(GameRunnerService.name);
 
   constructor(
@@ -21,7 +24,7 @@ export class GameRunnerService implements OnModuleInit {
     private readonly engine: EngineService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  async onApplicationBootstrap(): Promise<void> {
     await this.consumer.subscribe<GameStartingEvent>(
       {
         exchange: Exchange.LobbyEvents,
@@ -29,12 +32,19 @@ export class GameRunnerService implements OnModuleInit {
         queue: 'engine-game-starting',
       },
       async (msg) => {
-        this.logger.log(`game-starting received roomId=${msg.roomId} gameId=${msg.gameId}`);
-        // TODO: hydrate the player roster from the room (lobby-service exposes
-        // it via REST or via a separate bus message). For now, the engine
-        // creates an empty roster — the real wiring is left as an exercise
-        // for whoever implements the first scenario.
-        // await this.engine.createGame({ gameId: msg.gameId, scenarioId: ???, players: [], seed: msg.gameId });
+        this.logger.log(`game-starting received roomId=${msg.roomId} gameId=${msg.gameId} scenario=${msg.scenarioId}`);
+        const players: Player[] = msg.players.map((p, i) => ({
+          id: p.id,
+          displayName: p.displayName,
+          color: PLAYER_COLORS[i % PLAYER_COLORS.length]!,
+          seat: i,
+        }));
+        await this.engine.createGame({
+          gameId: msg.gameId,
+          scenarioId: msg.scenarioId,
+          players,
+          seed: msg.gameId,
+        });
       },
     );
 

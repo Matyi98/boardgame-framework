@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
 import type { GameSnapshot } from '@bgf/shared-types';
 import { GameStoreService } from '../persistence/game-store.service.js';
 
@@ -22,5 +22,23 @@ export class GamesController {
       lastEventSeq: 0, // TODO: track in store
       state,
     };
+  }
+
+  /**
+   * Returns the initial map + player list that was published as the
+   * `game-started` bus event. Clients that navigate to the game page after
+   * that event fires can call this to bootstrap their view without waiting for
+   * the next WebSocket message.
+   */
+  /**
+   * Returns the current renderable view snapshot (tiles with claims, player
+   * VPs, active player, game status/winner). Clients call this on mount so
+   * they can bootstrap without replaying the full event log.
+   */
+  @Get(':id/init')
+  async init(@Param('id') id: string): Promise<unknown> {
+    const payload = await this.store.loadView(id);
+    if (!payload) throw new NotFoundException(`No view found for game ${id}`);
+    return payload;
   }
 }

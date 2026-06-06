@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { Game, createGameState, type Action, type Player } from '@bgf/game-core';
+import { Game, createGameState, type Action, type GameState, type Player } from '@bgf/game-core';
 import { Exchange, RoutingKey, BusPublisher } from '@bgf/event-bus';
 import type { GameBusEvent } from '@bgf/shared-types';
 import { GameInstance } from './game-instance.js';
@@ -48,6 +48,24 @@ export class EngineService {
     instance.start();
     await this.store.save(input.gameId, state);
     this.flushEvents(instance);
+
+    // Persist a full renderable view snapshot so clients navigating to the
+    // game page after the bus event fires can still bootstrap their UI.
+    const view = this.buildView(state, input.players as Player[], null);
+    await this.store.saveView(input.gameId, view);
+
+    this.bus.publish<GameBusEvent>(
+      Exchange.GameEvents,
+      RoutingKey.gameEvent(input.gameId, 'game-started'),
+      {
+        gameId: input.gameId,
+        seq: 0,
+        type: 'game-started',
+        payload: view,
+        at: Date.now(),
+      },
+    );
+
     this.logger.log(`game created gameId=${input.gameId} scenario=${input.scenarioId}`);
   }
 
@@ -55,13 +73,17 @@ export class EngineService {
    * Applies a command coming in off the bus. Returns false if this replica
    * doesn't own the game (caller may re-enqueue or ignore).
    */
-  async handleCommand(input: { gameId: string; userId: string; type: string; payload: unknown; clientSeq?: number }): Promise<boolean> {
+  async handleCommand(input: {
+    gameId: string;
+    userId: string;
+    type: string;
+    payload: unknown;
+    clientSeq?: number;
+  }): Promise<boolean> {
     const instance = this.games.get(input.gameId);
     if (!instance) {
-      // Lazy hydration: load from snapshot if this replica should own it.
       const restored = await this.store.load(input.gameId);
       if (!restored) throw new NotFoundException(`Unknown game: ${input.gameId}`);
-      // TODO: rebuild Game from restored state + scenario + replay tail.
       throw new ServiceUnavailableException('Game not loaded on this replica');
     }
     const action: Action = {
@@ -86,8 +108,27 @@ export class EngineService {
       );
       return true;
     }
+
     this.flushEvents(instance);
     await this.store.save(input.gameId, instance.state);
+
+    // Detect game-over from submitted result events
+    const gameEndedEvent = (result as { ok: true; events?: ReadonlyArray<{ type: string; payload: unknown }> }).events?.find(
+      (e) => e.type === 'game-ended',
+    );
+    const victory = gameEndedEvent?.payload as { winner: string | null; reason: string } | undefined;
+
+    // Update the view snapshot so page refreshes recover current state
+    const players = [...instance.state.players.all()];
+    const view = this.buildView(instance.state, players, victory ?? null);
+    await this.store.saveView(input.gameId, view);
+
+    if (gameEndedEvent) {
+      instance.dispose();
+      this.games.delete(input.gameId);
+      this.logger.log(`game ended gameId=${input.gameId} winner=${victory?.winner ?? 'draw'}`);
+    }
+
     return true;
   }
 
@@ -99,9 +140,60 @@ export class EngineService {
         type: event.type,
         payload: event.payload,
         at: event.at ?? Date.now(),
+        ...(event.playerId  ? { playerId:  event.playerId  } : {}),
         ...(event.privateTo ? { privateTo: event.privateTo } : {}),
       };
       this.bus.publish(Exchange.GameEvents, RoutingKey.gameEvent(instance.gameId, event.type), msg);
     }
+  }
+
+  /**
+   * Builds a serialisable view snapshot that matches the frontend DemoView.
+   * Updated after every mutation so the /init REST endpoint always returns
+   * current state (tile claims, VPs, active player, game over info).
+   */
+  private buildView(
+    state: GameState,
+    players: Player[],
+    victory: { winner: string | null; reason: string } | null,
+  ): Record<string, unknown> {
+    // Map tileId → owner from pieces on tiles
+    const claimMap = new Map<string, string>();
+    for (const [, piece] of state.pieces) {
+      if (piece.location.kind === 'tile') {
+        const tileLocation = piece.location as { kind: 'tile'; tileId: string };
+        claimMap.set(tileLocation.tileId, piece.owner);
+      }
+    }
+
+    const activePlayer = state.rounds.turn().activePlayer;
+
+    return {
+      status: state.status as string,
+      tiles: [...state.map.tiles()].map((t) => ({
+        id: t.id,
+        q: t.coord.q,
+        r: t.coord.r,
+        terrain: t.terrain,
+        claimedBy: claimMap.get(t.id) ?? null,
+      })),
+      players: players.map((p) => ({
+        id: p.id,
+        displayName: p.displayName,
+        color: p.color,
+        seat: p.seat,
+        vp:    state.inventories.get(p.id)?.get('vp')    ?? 0,
+        wood:  state.inventories.get(p.id)?.get('wood')  ?? 0,
+        stone: state.inventories.get(p.id)?.get('stone') ?? 0,
+        isActive: p.id === activePlayer,
+      })),
+      currentActivePlayer: activePlayer,
+      winner: victory?.winner ?? null,
+      winReason: victory?.reason ?? null,
+      homeTiles: (state.extras['homeTiles'] as Record<string, string>) ?? {},
+      fortifications: (state.extras['fortifications'] as Record<string, string>) ?? {},
+      tradeOffers: (state.extras['tradeOffers'] as unknown[]) ?? [],
+      round: state.rounds.round(),
+    };
   }
 }

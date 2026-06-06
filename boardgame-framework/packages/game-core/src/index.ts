@@ -10,4 +10,5 @@ export * from './events/index.js';
 export * from './rules/index.js';
 export * from './state/index.js';
 export * from './setup/index.js';
+export * from './scenarios/index.js';
 export { Game } from './game.js';

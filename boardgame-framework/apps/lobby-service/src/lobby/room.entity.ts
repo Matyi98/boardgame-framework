@@ -2,6 +2,7 @@ import type { RoomDetail, RoomStatus, RoomSummary } from '@bgf/shared-types';
 
 interface RoomMember {
   userId: string;
+  displayName: string;
   ready: boolean;
 }
 
@@ -20,7 +21,7 @@ export class RoomEntity {
   readonly hostId: string;
   readonly maxPlayers: number;
   readonly createdAt = new Date();
-  private status: RoomStatus = 'open';
+  private _status: RoomStatus = 'open';
   private gameId: string | undefined;
   private readonly members = new Map<string, RoomMember>();
 
@@ -36,12 +37,20 @@ export class RoomEntity {
     return this.members.size >= this.maxPlayers;
   }
 
+  get playerCount(): number {
+    return this.members.size;
+  }
+
+  get status(): RoomStatus {
+    return this._status;
+  }
+
   get allReady(): boolean {
     return this.members.size > 1 && [...this.members.values()].every((m) => m.ready);
   }
 
-  addPlayer(userId: string): void {
-    if (!this.members.has(userId)) this.members.set(userId, { userId, ready: false });
+  addPlayer(userId: string, displayName: string): void {
+    if (!this.members.has(userId)) this.members.set(userId, { userId, displayName, ready: false });
   }
 
   removePlayer(userId: string): void {
@@ -55,8 +64,13 @@ export class RoomEntity {
   }
 
   markStarting(gameId: string): void {
-    this.status = 'starting';
+    this._status = 'starting';
     this.gameId = gameId;
+  }
+
+  /** Player list for the game-starting bus event. */
+  players(): ReadonlyArray<{ id: string; displayName: string }> {
+    return [...this.members.values()].map((m) => ({ id: m.userId, displayName: m.displayName }));
   }
 
   toSummary(): RoomSummary {
@@ -65,7 +79,7 @@ export class RoomEntity {
       name: this.name,
       scenarioId: this.scenarioId,
       hostId: this.hostId,
-      status: this.status,
+      status: this._status,
       playerCount: this.members.size,
       maxPlayers: this.maxPlayers,
       createdAt: this.createdAt.toISOString(),
@@ -75,7 +89,7 @@ export class RoomEntity {
   toDetail(): RoomDetail {
     return {
       ...this.toSummary(),
-      players: [...this.members.values()].map((m) => ({ userId: m.userId, username: m.userId, ready: m.ready })),
+      players: [...this.members.values()].map((m) => ({ userId: m.userId, username: m.displayName, ready: m.ready })),
       ...(this.gameId ? { gameId: this.gameId } : {}),
     };
   }

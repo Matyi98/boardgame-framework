@@ -38,68 +38,7 @@ import {
   endTurnValidator,          endTurnExecutor,
 } from './actions/index.js';
 import { lastPlayerStanding } from './victory.js';
-
-// ── View builder ──────────────────────────────────────────────────────────────
-
-function buildView(
-  state: GameState,
-  players: ReadonlyArray<Player>,
-  victory: { winner: string | null; reason: string } | null,
-): Record<string, unknown> {
-  const ownership = (state.extras['k:ownership'] as Record<string, string>) ?? {};
-  const capitals  = (state.extras['k:capitals']  as Record<string, string>) ?? {};
-  const activePlayer = state.rounds.turn().activePlayer;
-
-  const tiles = [...state.map.tiles()].map((t) => {
-    const piecesOnTile: Record<string, unknown>[] = [];
-    for (const [, piece] of state.pieces) {
-      if (piece.location.kind !== 'tile') continue;
-      if ((piece.location as { kind: 'tile'; tileId: string }).tileId !== t.id) continue;
-      piecesOnTile.push({
-        id: piece.id,
-        kind: piece.kind,
-        owner: piece.owner,
-        hp: (piece.state as Record<string, unknown> | undefined)?.['hp'] ?? null,
-      });
-    }
-    return {
-      id: t.id,
-      q: t.coord.q,
-      r: t.coord.r,
-      terrain: t.terrain,
-      owner: ownership[t.id] ?? null,
-      pieces: piecesOnTile,
-    };
-  });
-
-  const viewPlayers = players.map((p) => {
-    const inv = state.inventories.get(p.id);
-    return {
-      id: p.id,
-      displayName: p.displayName,
-      color: p.color,
-      seat: p.seat,
-      isActive: p.id === activePlayer,
-      isEliminated: state.players.isEliminated(p.id),
-      capitalTileId: capitals[p.id] ?? null,
-      wood:  inv?.get('wood')  ?? 0,
-      food:  inv?.get('food')  ?? 0,
-      iron:  inv?.get('iron')  ?? 0,
-      gold:  inv?.get('gold')  ?? 0,
-    };
-  });
-
-  return {
-    scenarioId: 'kingdoms-v1',
-    status: state.status as string,
-    round: state.rounds.round(),
-    currentActivePlayer: activePlayer,
-    winner: victory?.winner ?? null,
-    winReason: victory?.reason ?? null,
-    tiles,
-    players: viewPlayers,
-  };
-}
+import { buildKingdomsView } from './view-builder.js';
 
 // ── Scenario object ───────────────────────────────────────────────────────────
 
@@ -141,7 +80,8 @@ export const kingdomsScenario: Scenario = {
   victoryConditions: [lastPlayerStanding],
 
   buildMap: buildKingdomsMap,
-  buildView,
+  buildView: (state, players, victory) =>
+    buildKingdomsView(state, players, victory) as unknown as Record<string, unknown>,
 
   onSetup(state: GameState, players: ReadonlyArray<Player>): void {
     const coords = KINGDOMS_STARTING_COORDS[players.length] ?? KINGDOMS_STARTING_COORDS[2]!;
@@ -170,25 +110,29 @@ export const kingdomsScenario: Scenario = {
       state.pieces.set(sp1, makeUnitFromRegistry(kingdomsPieces, { id: sp1, kind: 'spearman', owner: player.id, tileId: tid }));
       state.pieces.set(sp2, makeUnitFromRegistry(kingdomsPieces, { id: sp2, kind: 'spearman', owner: player.id, tileId: tid }));
 
+      // Place 1 starting Noble — enables early occupation without needing to buy one first
+      const no1 = `noble-${player.id}-0`;
+      state.pieces.set(no1, makeUnitFromRegistry(kingdomsPieces, { id: no1, kind: 'noble', owner: player.id, tileId: tid }));
+
       // Claim starting tile
       ownership[tid] = player.id;
       capitals[player.id] = tid;
 
-      // Starting resources
+      // Starting resources — enough to build a structure or two and recruit
+      // a couple of units in the opening turns without waiting for income.
       const inv = state.inventories.get(player.id)!;
-      inv.add('wood', 5);
-      inv.add('food', 3);
-      inv.add('iron', 2);
-      inv.add('gold', 2);
+      inv.add('wood', 10);
+      inv.add('food', 8);
+      inv.add('iron', 6);
+      inv.add('gold', 30);
     });
 
-    state.extras['k:ownership']            = ownership;
-    state.extras['k:capitals']             = capitals;
-    state.extras['k:nextPieceId']          = 100; // start above setup piece IDs
-    state.extras['k:movedThisTurn']        = [];
-    state.extras['k:attackedFrom']         = [];
-    state.extras['k:pendingOccupations']   = {};
-    state.extras['k:confirmedOccupations'] = {};
-    state.extras['k:mortgagedCities']      = []; // piece IDs of deactivated cities
+    state.extras['k:ownership']           = ownership;
+    state.extras['k:capitals']            = capitals;
+    state.extras['k:nextPieceId']         = 100;
+    state.extras['k:movedThisTurn']       = [];
+    state.extras['k:attackedFrom']        = [];
+    state.extras['k:tileLoyalty']         = {};
+    state.extras['k:mortgagedCities']     = [];
   },
 };

@@ -2,16 +2,14 @@ import { describe, it, expect } from 'vitest';
 import {
   UNIT_DEFS,
   UNIT_KINDS,
-  OCCUPYING_UNIT_KINDS,
   type UnitKind,
 } from '../units.js';
-import { UNIT_STATS, STRUCTURE_KINDS, kingdomsPieces } from '../pieces.js';
+import { UNIT_STATS, kingdomsPieces } from '../pieces.js';
 import { MapBuilder } from '../../../map/map-builder.js';
 import { makeUnitFromRegistry } from '../../../pieces/unit.js';
 import type { GameState } from '../../../state/game-state.js';
-import { recruitUnitValidator, recruitUnitExecutor } from '../actions/recruit.js';
-import { moveUnitValidator, moveUnitExecutor } from '../actions/move.js';
-import { endTurnExecutor } from '../actions/end-turn.js';
+import { recruitUnitValidator } from '../actions/recruit.js';
+import { moveUnitValidator } from '../actions/move.js';
 
 // ── Shared test infrastructure ─────────────────────────────────────────────────
 
@@ -104,22 +102,15 @@ describe('UNIT_DEFS — completeness', () => {
       expect(def.movement).toBeGreaterThanOrEqual(1);
       expect(typeof def.foodPerRound).toBe('number');
       expect(def.foodPerRound).toBeGreaterThanOrEqual(0);
-      expect(typeof def.canOccupyUnowned).toBe('boolean');
     }
   });
 });
 
-describe('UNIT_KINDS / OCCUPYING_UNIT_KINDS', () => {
-  it('UNIT_KINDS includes all three kinds', () => {
+describe('UNIT_KINDS', () => {
+  it('includes all three kinds', () => {
     for (const kind of EXPECTED_KINDS) {
       expect(UNIT_KINDS.has(kind)).toBe(true);
     }
-  });
-
-  it('only Noble can occupy unowned tiles', () => {
-    expect(OCCUPYING_UNIT_KINDS.has('noble')).toBe(true);
-    expect(OCCUPYING_UNIT_KINDS.has('spearman')).toBe(false);
-    expect(OCCUPYING_UNIT_KINDS.has('cannoneer')).toBe(false);
   });
 });
 
@@ -153,9 +144,8 @@ describe('GAMEPLAN balance values', () => {
     expect(d.defense).toBe(3);
     expect(d.movement).toBe(2);
     expect(d.foodPerRound).toBe(1);
-    expect(d.buildCost).toEqual({ gold: 30, iron: 1, food: 1 });
-    expect(d.limitPerPlayer).toBe(2);
-    expect(d.canOccupyUnowned).toBe(true);
+    expect(d.buildCost).toEqual({ gold: 8, iron: 1, food: 1 });
+    expect(d.limitPerPlayer).toBe(10);
   });
 });
 
@@ -226,174 +216,82 @@ describe('recruitUnitValidator — structure prerequisite', () => {
   });
 });
 
-// ── move-unit — multi-step movement ───────────────────────────────────────────
+// ── move-unit — uniform movement rules ────────────────────────────────────────
+//
+// Movement is identical for every unit kind, including Noble: free movement
+// to any connected own tile, regardless of distance. Claiming an unowned tile
+// is done by attacking it (see attack.test.ts) — moving never grants ownership.
 
-describe('moveUnitValidator — single-step units (Spearman)', () => {
-  // Linear map: 0,0 — 1,0 — 2,0  all owned by p1
-  const map = buildMap([{ q: 0 }, { q: 1 }, { q: 2 }]);
-  const ownership = { '0,0': 'p1', '1,0': 'p1', '2,0': 'p1' };
-  const capitals  = { p1: '0,0' };
-
-  function spearmanAt(tileId: string) {
-    return new Map([['sp1', makeUnitFromRegistry(kingdomsPieces, { id: 'sp1', kind: 'spearman', owner: 'p1', tileId })]]);
-  }
-
-  it('allows move to adjacent owned tile', () => {
-    const state = makeState({ map, ownership, capitals, pieces: spearmanAt('0,0') as any });
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'sp1', targetTileId: '1,0' }));
-    expect(result).toBeNull();
-  });
-
-  it('rejects move 2 steps away (movement=1)', () => {
-    const state = makeState({ map, ownership, capitals, pieces: spearmanAt('0,0') as any });
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'sp1', targetTileId: '2,0' }));
-    expect(result?.code).toBe('out-of-range');
-  });
-
-  it('rejects move to unowned tile', () => {
-    const state = makeState({ map, ownership: { '0,0': 'p1' }, capitals, pieces: spearmanAt('0,0') as any });
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'sp1', targetTileId: '1,0' }));
-    expect(result?.code).toBe('not-owned');
-  });
-
-  it('rejects when unit already moved', () => {
-    const state = makeState({ map, ownership, capitals, pieces: spearmanAt('0,0') as any });
-    state.extras['k:movedThisTurn'] = ['sp1'];
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'sp1', targetTileId: '1,0' }));
-    expect(result?.code).toBe('already-moved');
-  });
-});
-
-describe('moveUnitValidator — Noble (movement=2, canOccupyUnowned=true)', () => {
-  // Linear map: 0,0(p1) — 1,0(p1) — 2,0(unowned) — 3,0(p2)
+describe('moveUnitValidator — uniform movement (Spearman and Noble alike)', () => {
+  // Linear map: 0,0(p1 capital) — 1,0(p1) — 2,0(unowned) — 3,0(p2)
   const map = buildMap([{ q: 0 }, { q: 1 }, { q: 2 }, { q: 3 }]);
   const ownership = { '0,0': 'p1', '1,0': 'p1', '3,0': 'p2' };
   const capitals  = { p1: '0,0', p2: '3,0' };
 
-  function nobleAt(tileId: string) {
-    return new Map([['n1', makeUnitFromRegistry(kingdomsPieces, { id: 'n1', kind: 'noble', owner: 'p1', tileId })]]);
+  function unitAt(kind: 'spearman' | 'noble', tileId: string) {
+    return new Map([['u1', makeUnitFromRegistry(kingdomsPieces, { id: 'u1', kind, owner: 'p1', tileId })]]);
   }
 
-  it('allows Noble to reach 2 hops away on owned tiles', () => {
-    const state = makeState({ map, ownership, capitals, pieces: nobleAt('0,0') as any });
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'n1', targetTileId: '1,0' }));
-    expect(result).toBeNull();
-  });
+  for (const kind of ['spearman', 'noble'] as const) {
+    it(`${kind}: allows move to adjacent owned tile`, () => {
+      const state = makeState({ map, ownership, capitals, pieces: unitAt(kind, '0,0') as any });
+      const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'u1', targetTileId: '1,0' }));
+      expect(result).toBeNull();
+    });
 
-  it('allows Noble to move to adjacent unowned tile', () => {
-    const state = makeState({ map, ownership, capitals, pieces: nobleAt('1,0') as any });
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'n1', targetTileId: '2,0' }));
-    expect(result).toBeNull();
-  });
+    it(`${kind}: allows move to a distant owned tile (no movement-range limit)`, () => {
+      const state = makeState({
+        map,
+        ownership: { ...ownership, '2,0': 'p1' },
+        capitals,
+        pieces: unitAt(kind, '0,0') as any,
+      });
+      const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'u1', targetTileId: '2,0' }));
+      expect(result).toBeNull();
+    });
 
-  it('allows Noble to reach unowned tile 2 hops away via own tiles', () => {
-    // Noble starts at 0,0. Can go 0→1→2 (2 steps). 2,0 is unowned.
-    const state = makeState({ map, ownership, capitals, pieces: nobleAt('0,0') as any });
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'n1', targetTileId: '2,0' }));
-    expect(result).toBeNull();
-  });
+    it(`${kind}: rejects move to an unowned tile`, () => {
+      const state = makeState({ map, ownership, capitals, pieces: unitAt(kind, '1,0') as any });
+      const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'u1', targetTileId: '2,0' }));
+      expect(result?.code).toBe('not-owned');
+    });
 
-  it('rejects Noble moving to enemy-owned tile', () => {
-    const state = makeState({ map, ownership, capitals, pieces: nobleAt('2,0') as any });
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'n1', targetTileId: '3,0' }));
-    expect(result?.code).toBe('enemy-tile');
-  });
+    it(`${kind}: rejects move to an enemy-owned tile`, () => {
+      const state = makeState({
+        map,
+        ownership: { ...ownership, '2,0': 'p1' },
+        capitals,
+        pieces: unitAt(kind, '2,0') as any,
+      });
+      const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'u1', targetTileId: '3,0' }));
+      expect(result?.code).toBe('not-owned');
+    });
 
-  it('rejects Noble moving to same tile', () => {
-    const state = makeState({ map, ownership, capitals, pieces: nobleAt('0,0') as any });
-    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'n1', targetTileId: '0,0' }));
-    expect(result?.code).toBe('same-tile');
-  });
-});
+    it(`${kind}: rejects move to the same tile`, () => {
+      const state = makeState({ map, ownership, capitals, pieces: unitAt(kind, '0,0') as any });
+      const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'u1', targetTileId: '0,0' }));
+      expect(result?.code).toBe('same-tile');
+    });
 
-// ── move-unit executor — occupation events ────────────────────────────────────
-
-describe('moveUnitExecutor — Noble occupation', () => {
-  const map = buildMap([{ q: 0 }, { q: 1 }, { q: 2 }]);
-  const ownership = { '0,0': 'p1', '1,0': 'p1' };
-  const capitals  = { p1: '0,0' };
-
-  it('emits noble-occupying when Noble lands on unowned tile', () => {
-    const pieces = new Map([['n1', makeUnitFromRegistry(kingdomsPieces, { id: 'n1', kind: 'noble', owner: 'p1', tileId: '1,0' })]]);
-    const state  = makeState({ map, ownership, capitals, pieces: pieces as any });
-    const events = moveUnitExecutor.execute(state, action('move-unit', 'p1', { pieceId: 'n1', targetTileId: '2,0' }));
-    expect(events.some((e) => e.type === 'noble-occupying')).toBe(true);
-    expect((state.extras['k:pendingOccupations'] as any)['2,0']).toEqual({ nobleId: 'n1', playerId: 'p1' });
-  });
-
-  it('does NOT emit noble-occupying when Noble moves to own tile', () => {
-    const pieces = new Map([['n1', makeUnitFromRegistry(kingdomsPieces, { id: 'n1', kind: 'noble', owner: 'p1', tileId: '0,0' })]]);
-    const state  = makeState({ map, ownership, capitals, pieces: pieces as any });
-    const events = moveUnitExecutor.execute(state, action('move-unit', 'p1', { pieceId: 'n1', targetTileId: '1,0' }));
-    expect(events.some((e) => e.type === 'noble-occupying')).toBe(false);
-    expect(Object.keys(state.extras['k:pendingOccupations'] as object)).toHaveLength(0);
-  });
-
-  it('cancels previous occupation when Noble moves away', () => {
-    const pieces = new Map([['n1', makeUnitFromRegistry(kingdomsPieces, { id: 'n1', kind: 'noble', owner: 'p1', tileId: '2,0' })]]);
-    const state  = makeState({ map, ownership, capitals, pieces: pieces as any });
-    // Noble was occupying 2,0 from before
-    state.extras['k:pendingOccupations'] = { '2,0': { nobleId: 'n1', playerId: 'p1' } };
-    // Noble moves back to an owned tile
-    moveUnitExecutor.execute(state, action('move-unit', 'p1', { pieceId: 'n1', targetTileId: '1,0' }));
-    // Occupation should be cancelled
-    expect((state.extras['k:pendingOccupations'] as any)['2,0']).toBeUndefined();
-  });
-});
-
-// ── Noble capture — end-turn pipeline ─────────────────────────────────────────
-
-describe('endTurnExecutor — Noble capture pipeline', () => {
-  const map = buildMap([{ q: 0 }, { q: 1 }, { q: 2 }]);
-  const ownership = { '0,0': 'p1', '1,0': 'p1' };
-  const capitals  = { p1: '0,0' };
-
-  function stateWithNoble(extraState: Partial<{ pending: object; confirmed: object }> = {}) {
-    const noble  = makeUnitFromRegistry(kingdomsPieces, { id: 'n1', kind: 'noble', owner: 'p1', tileId: '2,0' });
-    const capBase = makeUnitFromRegistry(kingdomsPieces, { id: 'cap1', kind: 'capital-base', owner: 'p1', tileId: '0,0' });
-    const pieces = new Map([['n1', noble], ['cap1', capBase]]);
-    const state  = makeState({ map, ownership: { ...ownership }, capitals, pieces: pieces as any });
-    state.extras['k:pendingOccupations']   = extraState.pending   ?? {};
-    state.extras['k:confirmedOccupations'] = extraState.confirmed ?? {};
-    return state;
+    it(`${kind}: rejects when the unit already moved this turn`, () => {
+      const state = makeState({ map, ownership, capitals, pieces: unitAt(kind, '0,0') as any });
+      state.extras['k:movedThisTurn'] = ['u1'];
+      const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'u1', targetTileId: '1,0' }));
+      expect(result?.code).toBe('already-moved');
+    });
   }
 
-  it('promotes pending occupation to confirmed at end-of-turn', () => {
-    const state = stateWithNoble({ pending: { '2,0': { nobleId: 'n1', playerId: 'p1' } } });
-    endTurnExecutor.execute(state, action('end-turn', 'p1'));
-    expect((state.extras['k:confirmedOccupations'] as any)['2,0']).toBeDefined();
-    expect((state.extras['k:pendingOccupations'] as any)['2,0']).toBeUndefined();
-  });
-
-  it('captures tile at second end-of-turn when Noble still on tile', () => {
-    const state  = stateWithNoble({ confirmed: { '2,0': { nobleId: 'n1', playerId: 'p1' } } });
-    const events = endTurnExecutor.execute(state, action('end-turn', 'p1'));
-    expect(events.some((e) => e.type === 'tile-captured')).toBe(true);
-    expect((state.extras['k:ownership'] as Record<string, string>)['2,0']).toBe('p1');
-  });
-
-  it('does NOT capture when Noble is gone', () => {
-    const state  = stateWithNoble({ confirmed: { '2,0': { nobleId: 'n1', playerId: 'p1' } } });
-    state.pieces.delete('n1'); // Noble was killed
-    const events = endTurnExecutor.execute(state, action('end-turn', 'p1'));
-    expect(events.some((e) => e.type === 'tile-captured')).toBe(false);
-    expect((state.extras['k:ownership'] as Record<string, string>)['2,0']).toBeUndefined();
-  });
-
-  it('does NOT capture when tile was claimed by enemy in the meantime', () => {
-    const state  = stateWithNoble({ confirmed: { '2,0': { nobleId: 'n1', playerId: 'p1' } } });
-    // Enemy captured the tile during their turn
-    (state.extras['k:ownership'] as Record<string, string>)['2,0'] = 'p2';
-    const events = endTurnExecutor.execute(state, action('end-turn', 'p1'));
-    expect(events.some((e) => e.type === 'tile-captured')).toBe(false);
-    // Ownership still belongs to p2
-    expect((state.extras['k:ownership'] as Record<string, string>)['2,0']).toBe('p2');
-  });
-
-  it('does not affect other players pending occupations', () => {
-    const state = stateWithNoble({ pending: { '2,0': { nobleId: 'n2', playerId: 'p2' } } });
-    endTurnExecutor.execute(state, action('end-turn', 'p1'));
-    // p2's pending should be untouched
-    expect((state.extras['k:pendingOccupations'] as any)['2,0']).toEqual({ nobleId: 'n2', playerId: 'p2' });
+  it('rejects move to an owned-but-disconnected tile', () => {
+    // p1 owns 0,0 (capital) and 1,0; 2,0 is an unowned gap; 3,0 would need to be
+    // owned-but-disconnected to trigger this — reuse a 5-tile map for the gap.
+    const gapMap = buildMap([{ q: 0 }, { q: 1 }, { q: 2 }, { q: 3 }, { q: 4 }]);
+    const state = makeState({
+      map: gapMap,
+      ownership: { '0,0': 'p1', '4,0': 'p1' }, // 4,0 owned but not connected (gap at 1,0-3,0)
+      capitals:  { p1: '0,0' },
+      pieces: unitAt('spearman', '0,0') as any,
+    });
+    const result = moveUnitValidator.validate(state, action('move-unit', 'p1', { pieceId: 'u1', targetTileId: '4,0' }));
+    expect(result?.code).toBe('disconnected');
   });
 });

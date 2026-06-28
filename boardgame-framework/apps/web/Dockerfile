@@ -10,6 +10,7 @@ COPY apps/web ./apps/web
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile=false
 RUN pnpm --filter @bgf/shared-types build
+RUN pnpm --filter @bgf/game-core    build
 RUN pnpm --filter @bgf/web          build
 
 FROM nginx:1.27-alpine AS runtime

@@ -10,8 +10,8 @@ All other services validate JWTs locally — no round-trips to auth-service at r
 |------|------|
 | `src/auth/auth.controller.ts` | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` |
 | `src/auth/auth.service.ts` | Bcrypt hashing, JWT minting with `@nestjs/jwt` |
-| `src/users/user.entity.ts` | TypeORM entity: `id UUID PK, username TEXT UNIQUE, passwordHash TEXT` |
-| `src/users/users.service.ts` | `findByUsername(name)`, `create(name, hash)` |
+| `prisma/schema.prisma` | Prisma `User` model: `id UUID PK, username TEXT UNIQUE, email TEXT?, passwordHash TEXT` |
+| `src/users/users.service.ts` | Prisma-backed: `create()`, `verifyPassword()`, `findById()`. Guards table creation on startup (`onModuleInit` — no migration pipeline in this skeleton project) |
 
 ## JWT payload
 ```ts
@@ -52,11 +52,23 @@ PORT=3001
 ```
 
 ## Postgres table
+Created on startup by `UsersService.onModuleInit()` via `CREATE TABLE IF NOT EXISTS`
+(idempotent — safe on every restart). Keep this in sync with `prisma/schema.prisma`
+if you add a column.
 ```sql
 CREATE TABLE users (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  username     TEXT NOT NULL UNIQUE,
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username      TEXT NOT NULL UNIQUE,
+  email         TEXT,
   password_hash TEXT NOT NULL,
-  created_at   TIMESTAMPTZ DEFAULT now()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
+
+## Adding a new column / migration
+This project has no `prisma migrate` pipeline — `pnpm install` runs `prisma generate`
+(codegen only, no DB changes) via the `postinstall` script. To add a column:
+1. Add it to `prisma/schema.prisma`
+2. Add it to the `CREATE TABLE IF NOT EXISTS` in `users.service.ts` — but note
+   `IF NOT EXISTS` won't add columns to an EXISTING table; for a real migration
+   you'd need an `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` follow-up statement.

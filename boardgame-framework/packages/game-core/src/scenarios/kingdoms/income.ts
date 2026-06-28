@@ -25,15 +25,6 @@
  * both income calculation and food cost. buildStructureMap() and computeFoodCost()
  * both skip piece IDs in the mortgaged set. See economy-loop.ts for when mortgage
  * is triggered.
- *
- * ── Attrition ordering (LIFO) ─────────────────────────────────────────────────
- * Units are disbanded in reverse recruitment order: the most recently recruited
- * unit dies first (LIFO by piece ID numeric suffix). Within the same recruitment
- * slot, ATTRITION_PRIORITY serves as a tiebreaker.
- *
- * Rationale: LIFO creates interesting pre-game decisions (recruit expensive units
- * first so cheap units die first in a deficit), and requires no additional state
- * tracking beyond the existing monotonically increasing piece ID counter.
  */
 
 import type { GameState } from '../../state/game-state.js';
@@ -43,7 +34,6 @@ import {
   calculateFoodConsumption,
   calculateStructureFoodCost,
   BASE_RESOURCE_YIELD,
-  ATTRITION_PRIORITY,
 } from './economy.js';
 import { STRUCTURE_KINDS, UNIT_STATS } from './pieces.js';
 import { playerConnectedTiles } from './connectivity.js';
@@ -74,17 +64,6 @@ function buildStructureMap(state: GameState, mortgagedIds: Set<string>): Map<str
 function getDeveloped(state: GameState): Set<string> {
   const raw = state.extras['k:developed'] as string[] | undefined;
   return raw ? new Set(raw) : new Set<string>();
-}
-
-/**
- * Extract the recruitment-order key from a piece ID for LIFO sorting.
- * kp-150 → 150 (recruited later → dies first in attrition)
- * sp-p1-2 → 2  (setup pieces → survive longer than in-game recruited units)
- * anything else → 0
- */
-function recruitmentOrder(pieceId: string): number {
-  const match = pieceId.match(/(\d+)$/);
-  return match ? parseInt(match[1]!, 10) : 0;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -171,56 +150,4 @@ export function computeFoodCost(state: GameState, playerId: PlayerId): number {
   }
 
   return calculateFoodConsumption(unitKinds) + calculateStructureFoodCost(structureKinds);
-}
-
-/**
- * Choose which units to disband when a player cannot feed their army.
- *
- * Order: LIFO by piece ID numeric suffix (most recently recruited dies first),
- * with ATTRITION_PRIORITY as a tiebreaker for equal recruitment order.
- * Structures are never included — only units with a non-zero food cost.
- *
- * Rationale for LIFO: newly recruited units are still in their deployment zone
- * and easier to disband; older units have entrenched positions. This also
- * creates pre-game strategy: recruit expensive units first so cheaper ones
- * absorb attrition losses.
- */
-export function chooseAttritionVictims(
-  state: GameState,
-  playerId: PlayerId,
-  foodDeficit: number,
-): string[] {
-  if (foodDeficit <= 0) return [];
-
-  type Candidate = { id: string; food: number; recruitOrder: number; priorityRank: number };
-
-  const candidates: Candidate[] = [];
-  for (const [id, piece] of state.pieces) {
-    if (piece.owner !== playerId) continue;
-    if (piece.location.kind !== 'tile') continue;
-    const food = UNIT_STATS[piece.kind]?.foodPerRound;
-    if (food === undefined || food <= 0) continue;
-    const rank = ATTRITION_PRIORITY.indexOf(piece.kind);
-    candidates.push({
-      id,
-      food,
-      recruitOrder: recruitmentOrder(id),
-      priorityRank:  rank === -1 ? Number.MAX_SAFE_INTEGER : rank,
-    });
-  }
-
-  // LIFO: highest recruit order (most recent) dies first.
-  // Tiebreak: ATTRITION_PRIORITY (most expendable kind first).
-  candidates.sort((a, b) =>
-    b.recruitOrder - a.recruitOrder || a.priorityRank - b.priorityRank,
-  );
-
-  const victims: string[] = [];
-  let covered = 0;
-  for (const { id, food } of candidates) {
-    if (covered >= foodDeficit) break;
-    victims.push(id);
-    covered += food;
-  }
-  return victims;
 }

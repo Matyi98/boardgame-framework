@@ -52,15 +52,6 @@ export const EXCHANGE_RATE = 3;
  */
 export const DEVELOP_COST = 8;
 
-/**
- * Attrition disbands units in this order when a player cannot feed their army.
- * Listed from first-to-disband to last.
- *
- * Current policy: spearmen first (most expendable), cannoneers last (hardest
- * to replace). Change this array to reprioritize without touching executor code.
- */
-export const ATTRITION_PRIORITY: ReadonlyArray<string> = ['spearman', 'noble', 'cannoneer'];
-
 // ── Structure income effects (derived from structures.ts) ─────────────────────
 
 /**
@@ -135,8 +126,7 @@ export function calculateFoodConsumption(unitKinds: ReadonlyArray<string>): numb
  *
  * Currently only City (2 food/round) has a non-zero value. This is separate
  * from unit food consumption so the two can be tracked and reported distinctly
- * in events (city-food-consumed vs food-consumed) and so attrition logic
- * (which only disbands units, not structures) can use each number separately.
+ * in events (city-food-consumed vs food-consumed).
  *
  * @param structureKinds  All structure kinds owned by the player
  */

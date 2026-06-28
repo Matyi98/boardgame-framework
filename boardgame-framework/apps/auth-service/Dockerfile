@@ -3,6 +3,10 @@
 # with Docker overlay layers. The pnpm store is cached via BuildKit mount.
 
 FROM node:20-alpine AS base
+# Prisma's query engine needs OpenSSL present to detect the right binary target
+# on musl/Alpine — without it, generate "guesses" and can silently mismatch the
+# runtime image's actual libssl, causing a connection failure at startup.
+RUN apk add --no-cache openssl
 RUN corepack enable && corepack prepare pnpm@9.7.0 --activate
 WORKDIR /repo
 
@@ -18,6 +22,7 @@ RUN pnpm --filter @bgf/auth-service  build
 
 # ── runtime ──────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
+RUN apk add --no-cache openssl
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /repo/apps/auth-service/dist ./dist

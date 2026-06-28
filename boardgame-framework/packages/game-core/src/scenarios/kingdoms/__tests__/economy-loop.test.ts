@@ -5,10 +5,9 @@
  * exactly the fields processRoundEnd() reads, then asserts:
  *   - the correct events are emitted (type + payload)
  *   - inventory mutations match expected resource changes
- *   - state.pieces mutations match attrition expectations
  *   - extras keys are updated correctly (k:mortgagedCities etc.)
  *
- * Test groups mirror the five processing steps in order.
+ * Test groups mirror the processing steps in order.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -275,7 +274,7 @@ describe('processRoundEnd — Step 2a: gold exchange', () => {
     expect(events.some((e) => e.type === 'food-purchased')).toBe(false);
   });
 
-  it('gold is depleted before attrition fires when partially covering deficit', () => {
+  it('food deficit beyond what gold can buy is simply unmet (no attrition)', () => {
     const map = buildMap([{ q: 0 }]);
     // 3 spearmen → 3 food; player has 0 food, 3 gold (can buy 1 food) → deficit 2 after exchange
     const inv = makeInventory({ gold: 3, food: 0 });
@@ -292,97 +291,9 @@ describe('processRoundEnd — Step 2a: gold exchange', () => {
     });
     const events = processRoundEnd(state);
     expect(events.some((e) => e.type === 'food-purchased')).toBe(true);
-    expect(events.some((e) => e.type === 'attrition-applied')).toBe(true);
-    // 1 food purchased (3 gold spent), 2 food still needed → 2 spearmen disbanded
-    expect(state.pieces.size).toBe(1);
+    // No units are disbanded — the remaining deficit is simply unmet.
+    expect(state.pieces.size).toBe(3);
     expect(inv.get('gold')).toBe(0);
-  });
-});
-
-// ── Step 3: Attrition (LIFO) ──────────────────────────────────────────────────
-
-describe('processRoundEnd — Step 3: attrition (LIFO)', () => {
-  it('emits attrition-applied when food deficit remains after exchange', () => {
-    const map  = buildMap([{ q: 0 }]);
-    const inv  = makeInventory({ gold: 0, food: 0 });
-    const sp   = makeUnitFromRegistry(kingdomsPieces, { id: 'kp-101', kind: 'spearman', owner: 'p1', tileId: '0,0' });
-    const state = makeState({
-      map,
-      players:     [{ id: 'p1' }],
-      pieces:      new Map([['kp-101', sp]]),
-      inventories: new Map([['p1', inv]]),
-    });
-    const events = processRoundEnd(state);
-    expect(events.some((e) => e.type === 'attrition-applied')).toBe(true);
-    expect(state.pieces.has('kp-101')).toBe(false);
-  });
-
-  it('LIFO: most recently recruited unit dies first', () => {
-    const map = buildMap([{ q: 0 }]);
-    const inv = makeInventory({ gold: 0, food: 0 });
-    // kp-200 (cannoneer, food=2) recruited after kp-100 (spearman, food=1)
-    // Deficit=1 → kp-200 (most recent) should die first (even though cannoneer has higher food cost)
-    const pieces = new Map([
-      ['kp-100', makeUnitFromRegistry(kingdomsPieces, { id: 'kp-100', kind: 'spearman',  owner: 'p1', tileId: '0,0' })],
-      ['kp-200', makeUnitFromRegistry(kingdomsPieces, { id: 'kp-200', kind: 'cannoneer', owner: 'p1', tileId: '0,0' })],
-    ]);
-    const state = makeState({
-      map,
-      players:     [{ id: 'p1' }],
-      pieces,
-      inventories: new Map([['p1', inv]]),
-    });
-    processRoundEnd(state);
-    // kp-200 (most recent cannoneer) should have died. kp-100 may also die
-    // depending on total food deficit (0 food, cannoneer=2, spearman=1, total=3).
-    // LIFO order: kp-200 first, then kp-100.
-    const attrition = processRoundEnd({
-      ...state,
-      pieces: new Map([
-        ['kp-100', makeUnitFromRegistry(kingdomsPieces, { id: 'kp-100', kind: 'spearman',  owner: 'p1', tileId: '0,0' })],
-        ['kp-200', makeUnitFromRegistry(kingdomsPieces, { id: 'kp-200', kind: 'cannoneer', owner: 'p1', tileId: '0,0' })],
-      ]),
-      inventories: new Map([['p1', makeInventory({ gold: 0, food: 0 })]]) as unknown as GameState['inventories'],
-    } as unknown as GameState);
-    const attrEvent = attrition.find((e) => e.type === 'attrition-applied');
-    expect(attrEvent).toBeDefined();
-    const pieceIds = (attrEvent!.payload as any).pieceIds as string[];
-    // kp-200 should be first victim (LIFO: highest ID = most recent)
-    expect(pieceIds[0]).toBe('kp-200');
-  });
-
-  it('attrition only kills player units, not enemy units', () => {
-    const map = buildMap([{ q: 0 }]);
-    const inv = makeInventory({ gold: 0, food: 0 });
-    const pieces = new Map([
-      ['kp-101', makeUnitFromRegistry(kingdomsPieces, { id: 'kp-101', kind: 'spearman', owner: 'p1', tileId: '0,0' })],
-      ['kp-102', makeUnitFromRegistry(kingdomsPieces, { id: 'kp-102', kind: 'spearman', owner: 'p2', tileId: '0,0' })],
-    ]);
-    const state = makeState({
-      map,
-      players:     [{ id: 'p1' }], // only p1 processed
-      pieces,
-      inventories: new Map([['p1', inv]]),
-    });
-    processRoundEnd(state);
-    expect(state.pieces.has('kp-101')).toBe(false); // p1's unit dies
-    expect(state.pieces.has('kp-102')).toBe(true);  // p2's unit survives
-  });
-
-  it('structures are never attritioned', () => {
-    const map   = buildMap([{ q: 0 }]);
-    const inv   = makeInventory({ gold: 0, food: 0 });
-    // Only a farm owned by p1 — farms have no food cost so no attrition
-    const farm  = makeUnitFromRegistry(kingdomsPieces, { id: 'kp-101', kind: 'farm', owner: 'p1', tileId: '0,0' });
-    const state = makeState({
-      map,
-      players:     [{ id: 'p1' }],
-      pieces:      new Map([['kp-101', farm]]),
-      inventories: new Map([['p1', inv]]),
-    });
-    const events = processRoundEnd(state);
-    expect(events.some((e) => e.type === 'attrition-applied')).toBe(false);
-    expect(state.pieces.has('kp-101')).toBe(true);
   });
 });
 
@@ -467,10 +378,10 @@ describe('processRoundEnd — multiple players', () => {
     expect(invP2.get('gold')).toBe(2);
   });
 
-  it('attrition for one player does not affect another', () => {
+  it('a food deficit for one player does not affect another', () => {
     const map = buildMap([{ q: 0 }, { q: 5 }]);
-    // p1 has 0 food and 1 spearman → attrition
-    // p2 has 5 food and 1 spearman → no attrition
+    // p1 has 0 food and 1 spearman → deficit, but unit survives (no attrition)
+    // p2 has 5 food and 1 spearman → no deficit
     const invP1 = makeInventory({ gold: 0, food: 0 });
     const invP2 = makeInventory({ gold: 0, food: 5 });
     const pieces = new Map([
@@ -484,36 +395,7 @@ describe('processRoundEnd — multiple players', () => {
       inventories: new Map([['p1', invP1], ['p2', invP2]]),
     });
     processRoundEnd(state);
-    expect(state.pieces.has('kp-101')).toBe(false); // p1's unit disbanded
-    expect(state.pieces.has('kp-102')).toBe(true);  // p2's unit intact
-  });
-});
-
-// ── LIFO attrition — chooseAttritionVictims behaviour ────────────────────────
-
-describe('chooseAttritionVictims — LIFO ordering via income.ts', () => {
-  it('ATTRITION_PRIORITY is the tiebreaker for same-slot pieces', () => {
-    // sp1, nb1, cn1 — all have numeric suffix 1 (same slot) → ATTRITION_PRIORITY wins
-    const map   = buildMap([{ q: 0 }]);
-    const inv   = makeInventory({ gold: 0, food: 0 });
-    const pieces = new Map([
-      ['cn1', makeUnitFromRegistry(kingdomsPieces, { id: 'cn1', kind: 'cannoneer', owner: 'p1', tileId: '0,0' })],
-      ['nb1', makeUnitFromRegistry(kingdomsPieces, { id: 'nb1', kind: 'noble',     owner: 'p1', tileId: '0,0' })],
-      ['sp1', makeUnitFromRegistry(kingdomsPieces, { id: 'sp1', kind: 'spearman',  owner: 'p1', tileId: '0,0' })],
-    ]);
-    const state = makeState({
-      map,
-      players:     [{ id: 'p1' }],
-      pieces,
-      inventories: new Map([['p1', inv]]),
-    });
-    const events = processRoundEnd(state);
-    const attrEv = events.find((e) => e.type === 'attrition-applied');
-    expect(attrEv).toBeDefined();
-    const ids = (attrEv!.payload as any).pieceIds as string[];
-    // sp1 should appear before nb1, nb1 before cn1
-    expect(ids).toContain('sp1');
-    const spIdx = ids.indexOf('sp1');
-    if (ids.includes('nb1')) expect(ids.indexOf('nb1')).toBeGreaterThan(spIdx);
+    expect(state.pieces.has('kp-101')).toBe(true); // p1's unit survives despite deficit
+    expect(state.pieces.has('kp-102')).toBe(true); // p2's unit intact
   });
 });

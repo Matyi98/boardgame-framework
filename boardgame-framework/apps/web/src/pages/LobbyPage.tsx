@@ -75,21 +75,35 @@ function AuthPanel(): JSX.Element {
   );
 }
 
+// ── Scenario routing helper ───────────────────────────────────────────────────
+
+function gameRoute(scenarioId: string, gameId: string): string {
+  return scenarioId === 'kingdoms-v1' ? `/kingdoms/${gameId}` : `/games/${gameId}`;
+}
+
+const SCENARIOS = [
+  { id: 'demo-v1',      name: 'Frontier',              description: '37-tile territory expansion, 2–4 players' },
+  { id: 'kingdoms-v1',  name: 'Kingdoms of Dominion',  description: '61-tile military conquest, 2–4 players' },
+] as const;
+
 // ── Create-room form ──────────────────────────────────────────────────────────
 
 function CreateRoomForm({ onCreated }: { onCreated: (room: RoomDetail) => void }): JSX.Element {
   const { create } = useLobby();
   const [name, setName] = useState('');
+  const [scenarioId, setScenarioId] = useState<string>('demo-v1');
   const [maxPlayers, setMaxPlayers] = useState(2);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const selectedScenario = SCENARIOS.find((s) => s.id === scenarioId) ?? SCENARIOS[0]!;
 
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const room = await create({ name: name || 'New Room', scenarioId: 'demo-v1', maxPlayers });
+      const room = await create({ name: name || 'New Room', scenarioId, maxPlayers });
       onCreated(room);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create room');
@@ -99,32 +113,72 @@ function CreateRoomForm({ onCreated }: { onCreated: (room: RoomDetail) => void }
   }
 
   return (
-    <form onSubmit={submit} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-      <div>
-        <div className="muted" style={{ fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>room name</div>
-        <input
-          style={{ padding: '7px 10px', fontSize: 13, background: 'var(--bg-soft)', color: 'var(--fg)', border: '1px solid var(--rule)', borderRadius: 4, width: 180 }}
-          placeholder="My Room"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
+    <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div>
+          <div className="muted" style={{ fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>room name</div>
+          <input
+            style={{ padding: '7px 10px', fontSize: 13, background: 'var(--bg-soft)', color: 'var(--fg)', border: '1px solid var(--rule)', borderRadius: 4, width: 180 }}
+            placeholder="My Room"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div>
+          <div className="muted" style={{ fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>players</div>
+          <select
+            style={{ padding: '7px 10px', fontSize: 13, background: 'var(--bg-soft)', color: 'var(--fg)', border: '1px solid var(--rule)', borderRadius: 4 }}
+            value={maxPlayers}
+            onChange={(e) => setMaxPlayers(Number(e.target.value))}
+          >
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+            <option value={4}>4</option>
+          </select>
+        </div>
+        <button className="btn" type="submit" disabled={loading}>
+          {loading ? '…' : 'create room'}
+        </button>
       </div>
+
       <div>
-        <div className="muted" style={{ fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>players</div>
-        <select
-          style={{ padding: '7px 10px', fontSize: 13, background: 'var(--bg-soft)', color: 'var(--fg)', border: '1px solid var(--rule)', borderRadius: 4 }}
-          value={maxPlayers}
-          onChange={(e) => setMaxPlayers(Number(e.target.value))}
-        >
-          <option value={2}>2</option>
-          <option value={3}>3</option>
-          <option value={4}>4</option>
-        </select>
+        <div className="muted" style={{ fontSize: 11, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>scenario</div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {SCENARIOS.map((s) => (
+            <label
+              key={s.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 10px',
+                borderRadius: 4,
+                border: `1px solid ${scenarioId === s.id ? 'var(--accent)' : 'var(--rule)'}`,
+                background: scenarioId === s.id ? 'var(--accent-soft)' : 'var(--bg-soft)',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="scenario"
+                value={s.id}
+                checked={scenarioId === s.id}
+                onChange={() => setScenarioId(s.id)}
+                style={{ accentColor: 'var(--accent)' }}
+              />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
+                <div className="muted" style={{ fontSize: 11 }}>{s.description}</div>
+              </div>
+            </label>
+          ))}
+        </div>
       </div>
-      <button className="btn" type="submit" disabled={loading}>
-        {loading ? '…' : 'create room'}
-      </button>
+
       {error && <span style={{ color: '#e74c3c', fontSize: 12 }}>{error}</span>}
+      <div style={{ fontSize: 11, color: 'var(--fg-dim)' }}>
+        Selected: <strong>{selectedScenario.name}</strong>
+      </div>
     </form>
   );
 }
@@ -152,7 +206,7 @@ function RoomDetailPanel({
   // Auto-poll every 2.5s while waiting; auto-redirect when game starts
   useEffect(() => {
     if (room.status === 'starting' && room.gameId) {
-      navigate(`/games/${room.gameId}`);
+      navigate(gameRoute(room.scenarioId, room.gameId));
       return;
     }
     pollRef.current = setInterval(() => { void onRefresh(); }, 2500);
@@ -185,7 +239,7 @@ function RoomDetailPanel({
     setError('');
     try {
       const updated = await start(room.roomId);
-      if (updated.gameId) navigate(`/games/${updated.gameId}`);
+      if (updated.gameId) navigate(gameRoute(room.scenarioId, updated.gameId));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not start game');
     } finally {

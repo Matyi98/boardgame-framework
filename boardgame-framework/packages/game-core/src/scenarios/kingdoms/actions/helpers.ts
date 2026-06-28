@@ -35,48 +35,28 @@ export function getDeveloped(state: GameState): Set<string> {
   return raw ? new Set(raw) : new Set();
 }
 
-/** Shape of a Noble occupation entry. */
-export interface OccupationEntry {
-  nobleId: string;
-  playerId: string;
+/**
+ * Loyalty per tile the attacker doesn't already own (unowned OR enemy-owned)
+ * — the occupation mechanic. Tiles start at full loyalty (100) implicitly;
+ * entries here only exist for tiles a Noble has successfully attacked at
+ * least once. A surviving Noble's attack reduces loyalty by 45 (see
+ * actions/attack.ts); reaching 0 grants the tile to the attacker (and can
+ * trigger capital capture / elimination if it was an enemy capital). Loyalty
+ * recovers +10 every round-end, unconditionally, capped at 100 (entries are
+ * deleted once they reach 100 again).
+ */
+export interface TileLoyalty {
+  loyalty: number;         // 1-99 while contested; entries at 100 are deleted
+  lastAttackerId: string;  // playerId whose Noble last reduced it (for UI color)
 }
 
-/**
- * Occupations initiated THIS turn (Noble just moved to unowned tile).
- * Promoted to confirmedOccupations at end-of-turn; not yet eligible for capture.
- */
-export function getPendingOccupations(state: GameState): Record<string, OccupationEntry> {
-  return (state.extras['k:pendingOccupations'] as Record<string, OccupationEntry>) ?? {};
-}
-
-/**
- * Occupations that were pending at the previous end-of-turn for this player.
- * Noble still on the tile at THIS end-of-turn → tile captured.
- */
-export function getConfirmedOccupations(state: GameState): Record<string, OccupationEntry> {
-  return (state.extras['k:confirmedOccupations'] as Record<string, OccupationEntry>) ?? {};
+export function getTileLoyalty(state: GameState): Record<string, TileLoyalty> {
+  return (state.extras['k:tileLoyalty'] as Record<string, TileLoyalty>) ?? {};
 }
 
 export function getMortgagedCityIds(state: GameState): Set<string> {
   const raw = state.extras?.['k:mortgagedCities'] as string[] | undefined;
   return raw ? new Set(raw) : new Set<string>();
-}
-
-/**
- * Cancel any pending/confirmed occupation held by a specific Noble piece.
- * Called when a Noble moves away from an occupied tile.
- */
-export function cancelOccupationByNoble(state: GameState, nobleId: string): void {
-  const pending   = { ...getPendingOccupations(state) };
-  const confirmed = { ...getConfirmedOccupations(state) };
-  for (const tileId of Object.keys(pending)) {
-    if (pending[tileId]?.nobleId === nobleId) delete pending[tileId];
-  }
-  for (const tileId of Object.keys(confirmed)) {
-    if (confirmed[tileId]?.nobleId === nobleId) delete confirmed[tileId];
-  }
-  state.extras['k:pendingOccupations']   = pending;
-  state.extras['k:confirmedOccupations'] = confirmed;
 }
 
 /** Monotonically increasing piece ID generator. Never reuse IDs even after pieces die. */

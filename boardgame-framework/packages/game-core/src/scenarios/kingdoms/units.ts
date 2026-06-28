@@ -8,18 +8,22 @@
  * Balance knobs: edit the values in UNIT_DEFS.
  * Structural knobs (new fields): extend UnitDef, then update pieces.ts defaultStats.
  *
- * ── Occupation mechanic ───────────────────────────────────────────────────────
- * Units with canOccupyUnowned=true (currently: Noble) may move to unowned tiles.
- * The tile is not immediately claimed; instead, a two-turn occupation resolves:
+ * ── Occupation mechanic (loyalty) ───────────────────────────────────────────────
+ * Movement never grants ownership — units only ever move between tiles the
+ * player already owns (see actions/move.ts). Capturing ANY other tile — unowned
+ * OR enemy-owned — is done by ATTACKING it; raw military victory alone never
+ * transfers ownership, for either kind of target:
  *
- *   Turn N:   Noble moves to unowned tile X → noble-occupying event;
- *             entry added to k:pendingOccupations.
- *   EndTurn N: k:pendingOccupations → k:confirmedOccupations (promoted).
- *   Turn N+1:  Player does other things.
- *   EndTurn N+1: k:confirmedOccupations resolved → if Noble still on X (and X
- *               still unowned) → tile-captured event, X granted to player.
+ *   - attack-tile with a Noble in the attacking force, who survives the
+ *     battle, reduces the target tile's loyalty by 45 (starts at 100, floor 0).
+ *   - If the Noble dies in the process, loyalty does not change.
+ *   - Loyalty recovers +10 every round-end, unconditionally, capped at 100.
+ *   - Loyalty reaching 0 grants the tile to whichever player landed that
+ *     attack (k:tileLoyalty in extras; see actions/attack.ts, actions/end-turn.ts).
+ *     For an enemy tile this can also trigger capital capture / elimination.
  *
- * See actions/move.ts, actions/end-turn.ts, and units/README.md for implementation.
+ * Regular combat units (spearman, cannoneer) may attack any tile without a
+ * Noble — this only clears defenders, it never affects loyalty or ownership.
  */
 
 export type UnitKind = 'spearman' | 'cannoneer' | 'noble';
@@ -50,12 +54,6 @@ export interface UnitDef {
   /** Food units consumed per round. Triggers attrition if unmet. */
   readonly foodPerRound: number;
   /**
-   * Whether this unit type may move onto (and occupy) unowned tiles.
-   * false → unit is restricted to player-owned tiles when moving.
-   * true  → unit may traverse and settle on unowned tiles (Noble mechanic).
-   */
-  readonly canOccupyUnowned: boolean;
-  /**
    * Whether this unit type may participate as an attacker in attack-tile.
    * false → unit cannot initiate or count toward the attack force (Noble).
    * Prevents Nobles from being used as military battering rams while keeping
@@ -75,7 +73,6 @@ export const UNIT_DEFS: Readonly<Record<UnitKind, UnitDef>> = {
     defense:          5,
     movement:         1,
     foodPerRound:     1,
-    canOccupyUnowned: false,
     canAttack:        true,
   },
   'cannoneer': {
@@ -88,31 +85,24 @@ export const UNIT_DEFS: Readonly<Record<UnitKind, UnitDef>> = {
     defense:          2,
     movement:         1,
     foodPerRound:     2,
-    canOccupyUnowned: false,
     canAttack:        true,
   },
   'noble': {
     kind:             'noble',
     displayName:      'Noble',
-    buildCost:        { gold: 30, iron: 1, food: 1 },
-    limitPerPlayer:   2,
+    buildCost:        { gold: 8, iron: 1, food: 1 }, // base cost for 2nd noble; scales dynamically in recruit.ts
+    limitPerPlayer:   10,
     hp:               8,
     attack:           1,
     defense:          3,
     movement:         2,
     foodPerRound:     1,
-    canOccupyUnowned: true,
     canAttack:        false,
   },
 };
 
 /** All unit kinds as a Set — for quick membership checks. */
 export const UNIT_KINDS = new Set<string>(Object.keys(UNIT_DEFS));
-
-/** Unit kinds that may move onto and occupy unowned tiles. */
-export const OCCUPYING_UNIT_KINDS = new Set<string>(
-  Object.values(UNIT_DEFS).filter((d) => d.canOccupyUnowned).map((d) => d.kind),
-);
 
 /** Unit kinds that may participate as attackers in attack-tile. */
 export const COMBAT_UNIT_KINDS = new Set<string>(

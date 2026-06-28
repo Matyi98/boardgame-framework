@@ -30,14 +30,12 @@ import type { GameState } from '../../../state/game-state.js';
 import type { GameEvent } from '../../../events/game-event.js';
 import { actionError } from '../../../actions/action.js';
 import { DEVELOP_COST } from '../economy.js';
-import { STRUCTURE_KINDS } from '../pieces.js';
 import {
   guardActivePlayer,
   getOwnership,
   connectedTiles,
   isConnected,
   getDeveloped,
-  structureOnTile,
 } from './helpers.js';
 
 /** Default resource type unlocked when developing a barren tile, by terrain. */

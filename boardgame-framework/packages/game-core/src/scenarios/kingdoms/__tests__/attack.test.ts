@@ -16,6 +16,17 @@ import { describe, it, expect } from 'vitest';
 import { attackTileValidator, attackTileExecutor } from '../actions/attack.js';
 import { COMBAT_UNIT_KINDS, UNIT_KINDS } from '../pieces.js';
 import { MapBuilder } from '../../../map/map-builder.js';
+
+// ── Event payload types (for type-safe test assertions) ───────────────────────
+interface BattleResolvedPayload { attackerWins: boolean; fromTileId: string; toTileId: string; attackerCasualties: number; defenderCasualties: number; attackerStrength: number; defenderStrength: number }
+interface PlayerEliminatedPayload { eliminatedPlayerId: string; byPlayerId: string }
+
+function battlePayload(ev: { payload: unknown } | undefined): BattleResolvedPayload | undefined {
+  return ev?.payload as BattleResolvedPayload | undefined;
+}
+function elimPayload(ev: { payload: unknown } | undefined): PlayerEliminatedPayload | undefined {
+  return ev?.payload as PlayerEliminatedPayload | undefined;
+}
 import { makeUnitFromRegistry } from '../../../pieces/unit.js';
 import { kingdomsPieces } from '../pieces.js';
 import type { GameState } from '../../../state/game-state.js';
@@ -40,8 +51,6 @@ interface StateOpts {
   pieces?: Map<string, Piece>;
   activePlayer?: string;
   attackedFrom?: string[];
-  pendingOccupations?: Record<string, { nobleId: string; playerId: string }>;
-  confirmedOccupations?: Record<string, { nobleId: string; playerId: string }>;
 }
 
 function makeState(opts: StateOpts = {}): GameState {
@@ -50,14 +59,13 @@ function makeState(opts: StateOpts = {}): GameState {
 
   return {
     extras: {
-      'k:ownership':            opts.ownership            ?? {},
-      'k:capitals':             opts.capitals             ?? {},
-      'k:movedThisTurn':        [],
-      'k:attackedFrom':         opts.attackedFrom         ?? [],
-      'k:nextPieceId':          100,
-      'k:pendingOccupations':   opts.pendingOccupations   ?? {},
-      'k:confirmedOccupations': opts.confirmedOccupations ?? {},
-      'k:mortgagedCities':      [],
+      'k:ownership':     opts.ownership    ?? {},
+      'k:capitals':      opts.capitals     ?? {},
+      'k:movedThisTurn': [],
+      'k:attackedFrom':  opts.attackedFrom ?? [],
+      'k:nextPieceId':   100,
+      'k:tileLoyalty':   {},
+      'k:mortgagedCities': [],
     },
     map:    MAP,
     pieces: (opts.pieces ?? new Map()) as GameState['pieces'],
@@ -239,63 +247,40 @@ describe('attackTileValidator', () => {
   });
 });
 
-// ── Executor — attacker wins ───────────────────────────────────────────────────
+// ── Executor — attacker wins, no Noble in the force ───────────────────────────
+//
+// Raw combat victory alone never transfers ownership any more — only a
+// surviving Noble eroding loyalty to 0 does (see the next describe block).
 
-describe('attackTileExecutor — attacker wins', () => {
-  it('removes all defender pieces and transfers tile ownership', () => {
+describe('attackTileExecutor — attacker wins, no Noble in force', () => {
+  it('removes all defender pieces but does not transfer ownership', () => {
     const state = makeStrongAttackState();
     attackTileExecutor.execute(
       state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
     );
     expect(state.pieces.has('sp2')).toBe(false);
-    expect((state.extras['k:ownership'] as Record<string, string>)[T(2)]).toBe('p1');
+    expect((state.extras['k:ownership'] as Record<string, string>)[T(2)]).toBe('p2');
   });
 
-  it('emits battle-resolved and tile-captured events', () => {
+  it('emits battle-resolved but no tile-captured event', () => {
     const state = makeStrongAttackState();
     const events = attackTileExecutor.execute(
       state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
     );
-    const battleEv  = events.find((e) => e.type === 'battle-resolved');
-    const captureEv = events.find((e) => e.type === 'tile-captured');
-    expect(battleEv?.payload?.attackerWins).toBe(true);
-    expect(battleEv?.payload?.fromTileId).toBe(T(1));
-    expect(battleEv?.payload?.toTileId).toBe(T(2));
-    expect(captureEv?.payload?.tileId).toBe(T(2));
-    expect(captureEv?.payload?.previousOwner).toBe('p2');
+    const battleEv = events.find((e) => e.type === 'battle-resolved');
+    expect(battlePayload(battleEv)?.attackerWins).toBe(true);
+    expect(battlePayload(battleEv)?.fromTileId).toBe(T(1));
+    expect(battlePayload(battleEv)?.toTileId).toBe(T(2));
+    expect(events.some((e) => e.type === 'tile-captured')).toBe(false);
   });
 
-  it('transfers structure ownership to attacker on non-capital capture', () => {
+  it('does not transfer structure ownership without a Noble', () => {
     const c1 = city('c1', 'p2', T(2));
     const state = makeStrongAttackState([['c1', c1]]);
     attackTileExecutor.execute(
       state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
     );
-    const updatedCity = state.pieces.get('c1');
-    expect(updatedCity).toBeDefined();
-    expect(updatedCity!.owner).toBe('p1');
-  });
-
-  it('does not emit player-eliminated on non-capital capture', () => {
-    const state = makeStrongAttackState(); // p2 capital is T(3), not T(2)
-    const events = attackTileExecutor.execute(
-      state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
-    );
-    expect(events.some((e) => e.type === 'player-eliminated')).toBe(false);
-  });
-
-  it('clears pending and confirmed occupation entries for the conquered tile', () => {
-    const state = makeStrongAttackState([], {
-      pendingOccupations:   { [T(2)]: { nobleId: 'n1', playerId: 'p1' } },
-      confirmedOccupations: { [T(2)]: { nobleId: 'n1', playerId: 'p1' } },
-    });
-    attackTileExecutor.execute(
-      state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
-    );
-    const pending   = state.extras['k:pendingOccupations']   as Record<string, unknown>;
-    const confirmed = state.extras['k:confirmedOccupations'] as Record<string, unknown>;
-    expect(pending[T(2)]).toBeUndefined();
-    expect(confirmed[T(2)]).toBeUndefined();
+    expect(state.pieces.get('c1')?.owner).toBe('p2');
   });
 
   it('appends from-tile to k:attackedFrom', () => {
@@ -306,7 +291,7 @@ describe('attackTileExecutor — attacker wins', () => {
     expect((state.extras['k:attackedFrom'] as string[])).toContain(T(1));
   });
 
-  it('conquers an undefended tile instantly with zero casualties', () => {
+  it('does not capture an undefended unowned tile without a Noble', () => {
     const pieces = new Map<string, Piece>([['cn1', cannoneer('cn1', 'p1', T(1))]]);
     const state = makeState({
       ownership:   { [T(0)]: 'p1', [T(1)]: 'p1' }, // T(2) is neutral
@@ -318,10 +303,144 @@ describe('attackTileExecutor — attacker wins', () => {
       state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
     );
     const ev = events.find((e) => e.type === 'battle-resolved')!;
-    expect(ev.payload?.attackerWins).toBe(true);
-    expect(ev.payload?.attackerCasualties).toBe(0);
+    expect(battlePayload(ev)?.attackerWins).toBe(true);
+    expect(battlePayload(ev)?.attackerCasualties).toBe(0);
     expect(state.pieces.has('cn1')).toBe(true);
+    expect((state.extras['k:ownership'] as Record<string, string>)[T(2)]).toBeUndefined();
+    expect(events.some((e) => e.type === 'tile-captured')).toBe(false);
+  });
+});
+
+// ── Executor — force strength must count every attacking unit kind ───────────
+//
+// Ticket #49: the frontend's strength preview was filtering attackers to
+// spearman/cannoneer only, silently dropping any Noble from both Σatk and
+// the unit count under √ — "a Noble can't attack" (§5) means it can't
+// *initiate* a solo attack on an enemy tile (attackTileValidator's job),
+// not that its ATK is excluded once a battle happens. This test pins the
+// engine's actual behavior — pieceAsCombatant() + computeStrength() apply no
+// kind filtering at all — so a future regression here fails loudly instead
+// of silently, the same way it did in the frontend preview.
+
+describe('attackTileExecutor — force strength includes every attacking unit kind (ticket #49)', () => {
+  it('counts Nobles\' ATK and adds them to the unit count under √ (§8 worked example)', () => {
+    const pieces = new Map<string, Piece>([
+      ['sp1', spearman('sp1', 'p1', T(1))],
+      ['sp2', spearman('sp2', 'p1', T(1))],
+      ['sp3', spearman('sp3', 'p1', T(1))],
+      ['nb1', noble('nb1', 'p1', T(1))],
+      ['nb2', noble('nb2', 'p1', T(1))],
+      ['def1', spearman('def1', 'p2', T(2))],
+    ]);
+    const state = makeState({
+      ownership:    { [T(0)]: 'p1', [T(1)]: 'p1', [T(2)]: 'p2' },
+      capitals:     { p1: T(0), p2: T(3) },
+      pieces,
+      activePlayer: 'p1',
+    });
+    const events = attackTileExecutor.execute(
+      state,
+      action('attack-tile', 'p1', {
+        fromTileId: T(1),
+        toTileId: T(2),
+        unitIds: ['sp1', 'sp2', 'sp3', 'nb1', 'nb2'],
+      }),
+    );
+    const ev = events.find((e) => e.type === 'battle-resolved');
+    // 3 spearmen (ATK 3 each) + 2 Nobles (ATK 1 each): Σatk = 11, count = 5
+    expect(battlePayload(ev)?.attackerStrength).toBeCloseTo(11 * Math.sqrt(5));
+  });
+});
+
+// ── Executor — occupation via a surviving Noble (loyalty) ────────────────────
+
+describe('attackTileExecutor — occupation via surviving Noble', () => {
+  function makeStrongAttackStateWithNoble(extraPieces: Array<[string, Piece]> = [], opts: Partial<StateOpts> = {}) {
+    const pieces = new Map<string, Piece>([
+      ['cn1', cannoneer('cn1', 'p1', T(1))],
+      ['cn2', cannoneer('cn2', 'p1', T(1))],
+      ['n1',  noble('n1',      'p1', T(1))],
+      ['sp2', spearman('sp2',  'p2', T(2))],
+      ...extraPieces,
+    ]);
+    return makeState({
+      ownership:   { [T(0)]: 'p1', [T(1)]: 'p1', [T(2)]: 'p2' },
+      capitals:    { p1: T(0), p2: T(3) },
+      pieces,
+      activePlayer: 'p1',
+      ...opts,
+    });
+  }
+
+  it('reduces loyalty by 45 on the first successful attack, no capture yet', () => {
+    const state = makeStrongAttackStateWithNoble();
+    const events = attackTileExecutor.execute(
+      state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
+    );
+    expect(events.some((e) => e.type === 'tile-captured')).toBe(false);
+    const loyaltyEv = events.find((e) => e.type === 'tile-loyalty-reduced');
+    expect(loyaltyEv).toBeDefined();
+    expect((loyaltyEv!.payload as { loyalty: number }).loyalty).toBe(55);
+    expect((state.extras['k:ownership'] as Record<string, string>)[T(2)]).toBe('p2');
+  });
+
+  it('captures a non-capital tile on the third successful attack and transfers structures', () => {
+    const c1 = city('c1', 'p2', T(2));
+    const state = makeStrongAttackStateWithNoble([['c1', c1]]);
+    attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) })); // 100 -> 55
+    state.extras['k:attackedFrom'] = []; // simulate ending/starting a turn between attacks
+    attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) })); // 55 -> 10
+    state.extras['k:attackedFrom'] = [];
+    const events = attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) })); // 10 -> captured
+
+    expect(events.some((e) => e.type === 'tile-captured')).toBe(true);
     expect((state.extras['k:ownership'] as Record<string, string>)[T(2)]).toBe('p1');
+    expect(state.pieces.get('c1')?.owner).toBe('p1');
+    expect(events.some((e) => e.type === 'player-eliminated')).toBe(false);
+  });
+
+  it('captures an unowned tile on the third successful attack', () => {
+    const pieces = new Map<string, Piece>([
+      ['cn1', cannoneer('cn1', 'p1', T(1))],
+      ['n1',  noble('n1',      'p1', T(1))],
+    ]);
+    const state = makeState({
+      ownership:   { [T(0)]: 'p1', [T(1)]: 'p1' }, // T(2) is neutral
+      capitals:    { p1: T(0) },
+      pieces,
+      activePlayer: 'p1',
+    });
+    attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
+    state.extras['k:attackedFrom'] = [];
+    attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
+    state.extras['k:attackedFrom'] = [];
+    const events = attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
+
+    expect(events.some((e) => e.type === 'tile-captured')).toBe(true);
+    expect((state.extras['k:ownership'] as Record<string, string>)[T(2)]).toBe('p1');
+  });
+
+  it('does not reduce loyalty if the Noble dies in combat', () => {
+    // Attacker (spearman + noble) is overwhelmed by 3 cannoneers → attacker loses, all attacker units die
+    const pieces = new Map<string, Piece>([
+      ['sp1', spearman('sp1', 'p1', T(1))],
+      ['n1',  noble('n1',     'p1', T(1))],
+      ['cn_a', cannoneer('cn_a', 'p2', T(2))],
+      ['cn_b', cannoneer('cn_b', 'p2', T(2))],
+      ['cn_c', cannoneer('cn_c', 'p2', T(2))],
+    ]);
+    const state = makeState({
+      ownership:   { [T(0)]: 'p1', [T(1)]: 'p1', [T(2)]: 'p2' },
+      capitals:    { p1: T(0), p2: T(3) },
+      pieces,
+      activePlayer: 'p1',
+    });
+    const events = attackTileExecutor.execute(
+      state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
+    );
+    expect(state.pieces.has('n1')).toBe(false); // Noble died
+    expect(events.some((e) => e.type === 'tile-loyalty-reduced')).toBe(false);
+    expect(events.some((e) => e.type === 'tile-captured')).toBe(false);
   });
 });
 
@@ -348,17 +467,18 @@ describe('attackTileExecutor — defender wins', () => {
     expect(state.pieces.has('sp1')).toBe(false);
     expect(events.some((e) => e.type === 'tile-captured')).toBe(false);
     expect((state.extras['k:ownership'] as Record<string, string>)[T(2)]).toBe('p2');
-    expect(events.find((e) => e.type === 'battle-resolved')?.payload?.attackerWins).toBe(false);
+    expect(battlePayload(events.find((e) => e.type === 'battle-resolved'))?.attackerWins).toBe(false);
   });
 });
 
 // ── Executor — capital capture / player elimination ───────────────────────────
 
 describe('attackTileExecutor — capital capture', () => {
-  it('eliminates defender, neutralises all their tiles and removes all their pieces', () => {
+  it('does not eliminate the defender on the first or second attack, only the third', () => {
     const pieces = new Map<string, Piece>([
       ['cn1', cannoneer('cn1', 'p1', T(1))],
       ['cn2', cannoneer('cn2', 'p1', T(1))],
+      ['n1',  noble('n1',      'p1', T(1))],
       ['sp2', spearman('sp2',  'p2', T(2))], // on capital tile
       ['sp3', spearman('sp3',  'p2', T(3))], // on another p2 tile
     ]);
@@ -368,9 +488,17 @@ describe('attackTileExecutor — capital capture', () => {
       pieces,
       activePlayer: 'p1',
     });
-    const events = attackTileExecutor.execute(
-      state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
-    );
+
+    const events1 = attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
+    expect(events1.some((e) => e.type === 'player-eliminated')).toBe(false);
+    expect(state.players.isEliminated('p2')).toBe(false);
+    state.extras['k:attackedFrom'] = [];
+
+    const events2 = attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
+    expect(events2.some((e) => e.type === 'player-eliminated')).toBe(false);
+    state.extras['k:attackedFrom'] = [];
+
+    const events3 = attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
     expect(state.players.isEliminated('p2')).toBe(true);
     // All p2 pieces removed
     expect(state.pieces.has('sp2')).toBe(false);
@@ -380,16 +508,17 @@ describe('attackTileExecutor — capital capture', () => {
     expect(ownership[T(2)]).toBe('p1');
     expect(ownership[T(3)]).toBeUndefined();
     // Events
-    expect(events.some((e) => e.type === 'player-eliminated')).toBe(true);
-    const elimEv = events.find((e) => e.type === 'player-eliminated')!;
-    expect(elimEv.payload?.eliminatedPlayerId).toBe('p2');
-    expect(elimEv.payload?.byPlayerId).toBe('p1');
+    expect(events3.some((e) => e.type === 'player-eliminated')).toBe(true);
+    const elimEv = events3.find((e) => e.type === 'player-eliminated')!;
+    expect(elimPayload(elimEv)?.eliminatedPlayerId).toBe('p2');
+    expect(elimPayload(elimEv)?.byPlayerId).toBe('p1');
   });
 
   it('does not transfer structure when capital is captured (elimination removes all p2 pieces)', () => {
     const pieces = new Map<string, Piece>([
       ['cn1', cannoneer('cn1', 'p1', T(1))],
       ['cn2', cannoneer('cn2', 'p1', T(1))],
+      ['n1',  noble('n1',      'p1', T(1))],
       ['sp2', spearman('sp2',  'p2', T(2))],
       ['c1',  city('c1',       'p2', T(2))],
     ]);
@@ -399,9 +528,11 @@ describe('attackTileExecutor — capital capture', () => {
       pieces,
       activePlayer: 'p1',
     });
-    attackTileExecutor.execute(
-      state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
-    );
+    attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
+    state.extras['k:attackedFrom'] = [];
+    attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
+    state.extras['k:attackedFrom'] = [];
+    attackTileExecutor.execute(state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }));
     // City deleted with all other p2 pieces during elimination
     expect(state.pieces.has('c1')).toBe(false);
     expect(state.players.isEliminated('p2')).toBe(true);
@@ -440,8 +571,8 @@ describe('attackTileExecutor — RNG casualty selection', () => {
       state, action('attack-tile', 'p1', { fromTileId: T(1), toTileId: T(2) }),
     );
     const ev = events.find((e) => e.type === 'battle-resolved')!;
-    expect(ev.payload?.attackerWins).toBe(true);
-    expect(ev.payload?.attackerCasualties).toBe(1);
+    expect(battlePayload(ev)?.attackerWins).toBe(true);
+    expect(battlePayload(ev)?.attackerCasualties).toBe(1);
     expect(state.pieces.has('a4')).toBe(false); // last one selected by rng
     expect(state.pieces.has('a1')).toBe(true);
     expect(state.pieces.has('a2')).toBe(true);

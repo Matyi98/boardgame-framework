@@ -4,7 +4,7 @@
  * ── Four resources ─────────────────────────────────────────────────────────────
  *
  *   Wood  — construction material for farms, castles, gates
- *   Food  — army upkeep; units that go unfed are disbanded (attrition)
+ *   Food  — army upkeep; an unfed army blocks recruiting new units (see actions/recruit.ts)
  *   Iron  — military prerequisite for cannoneers and castle upgrades
  *   Gold  — universal exchange medium; produced by every connected tile
  *             based on its economicValue (NOT a terrain type)
@@ -12,9 +12,10 @@
  * ── Gold exchange ──────────────────────────────────────────────────────────────
  *
  * A player may spend EXCHANGE_RATE gold to purchase 1 unit of Wood, Food, or Iron.
- * Exchange is used automatically in the economic loop (Step 7) when a player has
- * insufficient food: gold is spent before attrition kicks in.
- * Players may also exchange manually via a future trade action.
+ * Exchange is used automatically in the economic loop when a player has
+ * insufficient food. Any remaining deficit after exchange is simply unmet that
+ * round — no units are lost. Players may also exchange manually via a future
+ * trade action.
  *
  * ── Production ────────────────────────────────────────────────────────────────
  *

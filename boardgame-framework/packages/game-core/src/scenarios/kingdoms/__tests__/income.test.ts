@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeIncome, computeFoodCost, chooseAttritionVictims } from '../income.js';
+import { computeIncome, computeFoodCost } from '../income.js';
 import { BASE_RESOURCE_YIELD } from '../economy.js';
 import { MapBuilder } from '../../../map/map-builder.js';
 import { makeUnitFromRegistry } from '../../../pieces/unit.js';
@@ -189,64 +189,6 @@ describe('computeFoodCost', () => {
     ]);
     const s = stateWithPieces(pieces as any);
     expect(computeFoodCost(s, 'p1')).toBe(0);
-  });
-});
-
-// ── chooseAttritionVictims ────────────────────────────────────────────────────
-
-describe('chooseAttritionVictims', () => {
-  function stateWithUnits(units: Array<{ id: string; kind: string; owner: string }>): GameState {
-    const pieces = new Map(
-      units.map((u) => [u.id, makeUnitFromRegistry(kingdomsPieces, { ...u, tileId: '0,0' })]),
-    );
-    return { pieces } as unknown as GameState;
-  }
-
-  it('returns empty array when deficit is 0', () => {
-    const s = stateWithUnits([{ id: 'sp1', kind: 'spearman', owner: 'p1' }]);
-    expect(chooseAttritionVictims(s, 'p1', 0)).toHaveLength(0);
-  });
-
-  it('disbands spearmen before nobles and cannoneers', () => {
-    const s = stateWithUnits([
-      { id: 'cn1', kind: 'cannoneer', owner: 'p1' },
-      { id: 'nb1', kind: 'noble', owner: 'p1' },
-      { id: 'sp1', kind: 'spearman', owner: 'p1' },
-    ]);
-    const victims = chooseAttritionVictims(s, 'p1', 1);
-    expect(victims).toContain('sp1');
-    expect(victims).not.toContain('cn1');
-  });
-
-  it('disbands enough units to cover the full deficit', () => {
-    const s = stateWithUnits([
-      { id: 'sp1', kind: 'spearman', owner: 'p1' },
-      { id: 'sp2', kind: 'spearman', owner: 'p1' },
-      { id: 'sp3', kind: 'spearman', owner: 'p1' },
-    ]);
-    // Each spearman costs 1 food. Deficit of 2 → disband 2 spearmen.
-    const victims = chooseAttritionVictims(s, 'p1', 2);
-    expect(victims).toHaveLength(2);
-  });
-
-  it('only disbands current player units', () => {
-    const s = stateWithUnits([
-      { id: 'sp1', kind: 'spearman', owner: 'p1' },
-      { id: 'sp2', kind: 'spearman', owner: 'p2' },
-    ]);
-    const victims = chooseAttritionVictims(s, 'p1', 1);
-    expect(victims).toContain('sp1');
-    expect(victims).not.toContain('sp2');
-  });
-
-  it('stops disbanding once deficit is covered', () => {
-    const s = stateWithUnits([
-      { id: 'sp1', kind: 'spearman', owner: 'p1' },
-      { id: 'sp2', kind: 'spearman', owner: 'p1' },
-      { id: 'sp3', kind: 'spearman', owner: 'p1' },
-    ]);
-    const victims = chooseAttritionVictims(s, 'p1', 1);
-    expect(victims).toHaveLength(1);
   });
 });
 

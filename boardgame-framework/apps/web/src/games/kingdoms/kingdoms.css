@@ -1,0 +1,1032 @@
+/* ── Kingdoms of Dominion — game-specific styles ─────────────────────────── */
+
+/* ── Design tokens ────────────────────────────────────────────────────────────
+ * Single source of truth for color, spacing, radius, elevation, type, motion,
+ * and z-index in the Kingdoms UI (ticket #7). Every new component should
+ * consume these instead of hardcoding values. Layered on top of the global
+ * theme (styles.css) without touching it, so Frontier/Lobby are unaffected.
+ *
+ * Two color sets live outside this file because they're computed/keyed, not
+ * static CSS values: player colors + ownership-ring patterns are in
+ * player-visuals.ts (ticket #8); terrain gradients are the k-grad-* defs
+ * inside KingdomsBoard.tsx's <defs> (ticket #9). Both still draw their raw
+ * hex values from the same visual language as the tokens below — start here
+ * before adding a new color anywhere in the Kingdoms UI.
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* ── Surfaces / text (semantic aliases over the global theme) ── */
+  --k-bg:            var(--bg);
+  --k-bg-soft:       var(--bg-soft);
+  --k-surface:       var(--bg-soft);
+  --k-surface-raised: #1f222b;
+  --k-border:        var(--rule);
+  --k-text:          var(--fg);
+  --k-text-dim:      var(--fg-dim);
+  --k-text-muted:    #6e6a60;
+
+  /* ── Semantic colors ── */
+  --k-success:      #40b060;
+  --k-success-bg:    rgba(64, 176, 96, 0.14);
+  --k-warning:      #d4a820;
+  --k-warning-bg:    rgba(212, 168, 32, 0.14);
+  --k-danger:       #e05050;
+  --k-danger-bg:     rgba(224, 80, 80, 0.14);
+  --k-info:         #4090d0;
+  --k-info-bg:       rgba(64, 144, 208, 0.14);
+
+  /* ── Terrain ── */
+  --k-terrain-plains:   #4a8a30;
+  --k-terrain-hills:    #9b7c45;
+  --k-terrain-forest:   #1e5c16;
+  --k-terrain-mountain: #6a5a4a;
+
+  /* ── Player colors ──
+   * 4-color "core" palette (ticket #8): chosen to stay distinguishable under
+   * deuteranopia/protanopia (the two most common forms of colorblindness) —
+   * blue/orange/teal/magenta rather than red/green, which collide for ~8% of
+   * players. Each is paired with a unique board pattern key (k-pattern-*,
+   * see KingdomsBoard.tsx) so ownership never depends on color alone.
+   * Slots 5-6 (yellow/purple) only come into play at 5-6 players, which the
+   * scenario doesn't currently support (max 4) — kept for forward-compat. */
+  --k-player-1: #4090d0; /* blue   · pattern: solid ring */
+  --k-player-2: #e08020; /* orange · pattern: dashed ring */
+  --k-player-3: #20b0a0; /* teal   · pattern: dotted ring */
+  --k-player-4: #c050a0; /* magenta· pattern: double ring */
+  --k-player-5: #c8a030; /* yellow (5-6p forward-compat) */
+  --k-player-6: #8050c0; /* purple (5-6p forward-compat) */
+
+  /* Legacy aliases — old red/green palette some components still reference.
+   * Migrate call sites to --k-player-N, then delete these. */
+  --k-color-red:    #e05050;
+  --k-color-blue:   var(--k-player-1);
+  --k-color-green:  #40b060;
+  --k-color-yellow: var(--k-player-5);
+  --k-color-orange: var(--k-player-2);
+  --k-color-purple: var(--k-player-6);
+
+  /* ── Resources ── */
+  --k-resource-wood: #c07830;
+  --k-resource-food: #50b050;
+  --k-resource-iron: #7090c0;
+  --k-resource-gold: #d4a820;
+
+  /* ── Spacing scale (4px base) ── */
+  --k-space-1: 4px;
+  --k-space-2: 8px;
+  --k-space-3: 12px;
+  --k-space-4: 16px;
+  --k-space-5: 20px;
+  --k-space-6: 24px;
+  --k-space-8: 32px;
+
+  /* ── Radius scale ── */
+  --k-radius-sm: 4px;
+  --k-radius-md: 6px;
+  --k-radius-lg: 8px;
+  --k-radius-xl: 12px;
+  --k-radius-pill: 999px;
+
+  /* ── Elevation / shadow ── */
+  --k-shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.35);
+  --k-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.45);
+  --k-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55);
+  --k-glow-accent: 0 0 14px rgba(217, 126, 58, 0.45);
+
+  /* ── Type ── (ticket #10 — the global app shell stays on JetBrains Mono;
+   * gameplay UI uses a clean sans so it reads as a tabletop game, not a
+   * dev tool. Display font is for titles/banners only — never body text.) */
+  --k-font-ui:      'Inter', system-ui, -apple-system, sans-serif;
+  --k-font-display: var(--font-display);
+
+  --k-text-2xs: 9px;
+  --k-text-xs:  10px;
+  --k-text-sm:  11px;
+  --k-text-md:  13px;
+  --k-text-lg:  16px;
+  --k-text-xl:  20px;
+
+  /* ── Motion ── */
+  --k-duration-instant: 80ms;
+  --k-duration-fast:    120ms;
+  --k-duration-base:    200ms;
+  --k-duration-slow:    320ms;
+  --k-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ── Z-index scale ──
+   * Keep every fixed/overlay element's z-index referencing one of these
+   * instead of a magic number, so stacking order stays provable at a glance. */
+  --k-z-board:        1;
+  --k-z-panel:        10;
+  --k-z-combat-toast: 300;
+  --k-z-error-toast:  400;
+  --k-z-winner:       500;
+}
+
+/* ── Keyframe animations ─────────────────────────────────────────────────── */
+
+@keyframes k-combat-flash {
+  0%   { fill-opacity: 0; }
+  15%  { fill-opacity: 0.65; }
+  60%  { fill-opacity: 0.45; }
+  100% { fill-opacity: 0; }
+}
+
+@keyframes k-capture-sweep {
+  0%   { fill-opacity: 0; stroke-opacity: 0; }
+  20%  { fill-opacity: 0.55; stroke-opacity: 1; }
+  80%  { fill-opacity: 0.25; stroke-opacity: 0.5; }
+  100% { fill-opacity: 0; stroke-opacity: 0; }
+}
+
+@keyframes k-noble-ring {
+  0%   { stroke-opacity: 0.4; stroke-width: 3; }
+  50%  { stroke-opacity: 1;   stroke-width: 5; }
+  100% { stroke-opacity: 0.4; stroke-width: 3; }
+}
+
+@keyframes k-noble-ring-fast {
+  0%   { stroke-opacity: 0.6; stroke-width: 4; }
+  50%  { stroke-opacity: 1;   stroke-width: 6; }
+  100% { stroke-opacity: 0.6; stroke-width: 4; }
+}
+
+@keyframes k-turn-banner {
+  0%   { transform: translateX(40px); opacity: 0; }
+  100% { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes k-income-float {
+  0%   { transform: translateY(0);    opacity: 1; }
+  70%  { transform: translateY(-24px); opacity: 0.8; }
+  100% { transform: translateY(-36px); opacity: 0; }
+}
+
+@keyframes k-shake {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(-5px); }
+  40%  { transform: translateX(5px); }
+  60%  { transform: translateX(-4px); }
+  80%  { transform: translateX(4px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes k-pulse-selected {
+  0%   { stroke-opacity: 1;   stroke-width: 4; }
+  50%  { stroke-opacity: 0.5; stroke-width: 3; }
+  100% { stroke-opacity: 1;   stroke-width: 4; }
+}
+
+@keyframes k-slide-in-log {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes k-glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(217, 126, 58, 0.25); }
+  50%      { box-shadow: 0 0 20px rgba(217, 126, 58, 0.6); }
+}
+
+@keyframes k-panel-in {
+  from { opacity: 0; transform: scale(0.94) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes k-end-turn-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(217, 126, 58, 0); }
+  50%      { box-shadow: 0 4px 18px rgba(217, 126, 58, 0.55); }
+}
+
+@keyframes k-dot-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50%      { opacity: 1;   transform: scale(1.2); }
+}
+
+@keyframes k-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── SVG hex cursor rules ─────────────────────────────────────────────────── */
+
+/* ── App root (ticket #10) ────────────────────────────────────────────────────
+ * Scopes the UI sans font to the Kingdoms page only — the global app shell
+ * (lobby, Frontier) keeps its JetBrains Mono identity untouched. */
+.k-app-root {
+  font-family: var(--k-font-ui);
+}
+
+/* ── Responsive layout (ticket #44) ──────────────────────────────────────────────
+ * Desktop: board + 320px side rail, side by side. Below 720px (phones, small
+ * tablets in portrait): stack into rows — board takes the remaining height,
+ * the rail becomes a capped-height bottom panel instead of a fixed sidebar,
+ * which is what image 5 in the backlog already showed working informally. */
+
+.k-game-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .k-game-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+  .k-game-sidebar {
+    border-left: none !important;
+    border-top: 1px solid var(--rule);
+    max-height: 42vh;
+  }
+  .k-board-wrapper {
+    margin: 4px !important;
+    padding: 4px !important;
+  }
+}
+
+/* Reduce motion (ticket #43) — a blanket override rather than gating every
+ * individual animation/transition declaration one by one. */
+.k-reduce-motion, .k-reduce-motion * {
+  animation-duration: 0.001s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0.001s !important;
+}
+
+.k-hex--selectable { cursor: pointer; transition: filter 0.1s ease; }
+/* Ticket #58: valid targets get a baseline brightness boost even without
+ * hover — they're the thing that should pop, not just the soft-dimmed
+ * background everything else fades into. */
+.k-hex--move-target { cursor: crosshair; transition: filter 0.1s ease; filter: brightness(1.12); }
+.k-hex--attack-target { cursor: crosshair; transition: filter 0.1s ease; filter: brightness(1.12); }
+
+.k-hex--selectable:hover {
+  filter: brightness(1.18);
+}
+.k-hex--move-target:hover,
+.k-hex--attack-target:hover {
+  filter: brightness(1.32);
+}
+
+/* Pressed feel (ticket #22) — a quick dip distinct from hover's brighten. */
+.k-hex--selectable:active,
+.k-hex--move-target:active,
+.k-hex--attack-target:active {
+  filter: brightness(0.9);
+}
+
+/* Hover ring — invisible at rest, fades in on hover (ticket #22). Separate
+ * from the selection ring (always orange, pulsing) so the two states never
+ * look like the same affordance at different strengths. */
+.k-hex__hover-ring {
+  stroke-opacity: 0;
+  transition: stroke-opacity 0.12s ease;
+}
+.k-hex--selectable:hover .k-hex__hover-ring,
+.k-hex--move-target:hover .k-hex__hover-ring,
+.k-hex--attack-target:hover .k-hex__hover-ring {
+  stroke-opacity: 0.6;
+}
+
+/* Keyboard focus (ticket #45) — tiles are now real tabIndex={0} controls;
+ * without this, Tab-ing through the board would be invisible. */
+.k-hex--selectable:focus-visible,
+.k-hex--move-target:focus-visible,
+.k-hex--attack-target:focus-visible {
+  outline: none;
+}
+.k-hex--selectable:focus-visible .k-hex__hover-ring,
+.k-hex--move-target:focus-visible .k-hex__hover-ring,
+.k-hex--attack-target:focus-visible .k-hex__hover-ring {
+  stroke-opacity: 1;
+  stroke: #fff;
+  stroke-width: 2.5px;
+}
+
+/* On-tile detail tier (ticket #18) — eco value + resource glyph are hidden
+ * at rest and revealed on hover, so the resting board reads clean; the
+ * always-relevant stuff (owner ring, structures, unit stacks) stays outside
+ * this group and is never hidden. Forced visible via inline style when the
+ * tile is selected (see KingdomsBoard.tsx) so it doesn't vanish right after
+ * a click. */
+.k-hex__detail {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.k-hex--selectable:hover .k-hex__detail,
+.k-hex--move-target:hover .k-hex__detail,
+.k-hex--attack-target:hover .k-hex__detail {
+  opacity: 1;
+}
+
+/* ── Resource bar ─────────────────────────────────────────────────────────── */
+
+.k-resource-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  background: linear-gradient(180deg, var(--bg-soft), var(--bg));
+  border-bottom: 1px solid var(--rule);
+  box-shadow: var(--k-shadow-sm);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: var(--k-z-board);
+}
+
+.k-resource-bar__item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.k-resource-bar__item:hover {
+  border-color: rgba(217, 126, 58, 0.5);
+  box-shadow: 0 0 8px rgba(217, 126, 58, 0.2);
+}
+
+/* Round-end income/conversion float (ticket #37) — k-income-float existed
+ * as an unused keyframe (documented in README, never wired to anything)
+ * before this). The wrapper handles positioning so income + conversion can
+ * stack vertically without two absolutely-positioned siblings fighting over
+ * the same anchor. */
+.k-income-popup-stack {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.k-income-popup {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  animation: k-income-float 1.4s ease-out both;
+}
+
+.k-resource-bar__icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.k-resource-bar__amount {
+  font-weight: 700;
+  min-width: 20px;
+}
+
+.k-resource-bar__income {
+  color: var(--fg-dim);
+  font-size: 10px;
+}
+
+.k-resource-bar__income--negative {
+  color: #e05050;
+}
+
+/* ── Action panel ─────────────────────────────────────────────────────────── */
+
+.k-action-panel {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.03), transparent 40%), var(--bg-soft);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--k-shadow-sm);
+}
+
+/* Ticket #55: this panel has no max-height, so its own overflow-y:auto never
+ * actually scrolled anything — but per spec, overflow:auto still establishes
+ * a scroll container for position:sticky purposes regardless of whether it's
+ * visibly scrolling. That silently trapped any sticky footer inside a box
+ * that never pans, which is exactly why the ATTACK/CANCEL buttons could end
+ * up clipped instead of pinned: there was nothing to stick within. Removing
+ * it lets overflow bubble to the sidebar's actual scrolling container,
+ * where .k-action-panel__sticky-footer below can do real work. */
+
+.k-action-panel__sticky-footer {
+  position: sticky;
+  bottom: 0;
+  margin: 8px -12px -12px;
+  padding: 8px 12px;
+  background: var(--k-surface, var(--bg-soft));
+  border-top: 1px solid var(--rule);
+}
+
+.k-action-panel__mode-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  padding: 7px 10px;
+  border-radius: 5px;
+  text-align: center;
+}
+
+.k-action-panel__mode-header--move {
+  background: linear-gradient(180deg, rgba(64, 144, 208, 0.2), rgba(64, 144, 208, 0.08));
+  color: #6cb0e8;
+  border: 1px solid rgba(64, 144, 208, 0.45);
+  box-shadow: 0 0 12px rgba(64, 144, 208, 0.18);
+}
+
+.k-action-panel__mode-header--attack {
+  background: linear-gradient(180deg, rgba(224, 80, 80, 0.22), rgba(224, 80, 80, 0.08));
+  color: #ff8080;
+  border: 1px solid rgba(224, 80, 80, 0.45);
+  box-shadow: 0 0 12px rgba(224, 80, 80, 0.18);
+}
+
+.k-action-panel__section-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fg-dim);
+  margin-bottom: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--accent-soft);
+}
+
+.k-action-panel__divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--rule), transparent);
+}
+
+/* ── Badge / pill primitive (ticket #15) ──────────────────────────────────────
+ * Costs, counts, stat chips, and deltas all render from primitives.tsx's
+ * <Badge>, which applies this class. Was named .k-cost-chip when it only
+ * served recruit/build cost rows — generalized once the tile-info badges
+ * (eco value, resource type, developed) turned out to need the exact same
+ * shape, just with a different --badge-color. */
+
+.k-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--k-text-xs);
+  padding: 2px 7px;
+  border-radius: var(--k-radius-pill);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--badge-color, var(--k-border));
+  color: var(--badge-color, var(--k-text-dim));
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.k-badge--short {
+  border-color: rgba(224, 80, 80, 0.65);
+  color: #ff9a9a;
+  background: var(--k-danger-bg);
+}
+
+/* ── End-turn call to action ──────────────────────────────────────────────────── */
+
+.k-end-turn-cta {
+  position: relative;
+  font-weight: 700;
+  animation: k-end-turn-glow 2.4s ease-in-out infinite;
+}
+
+.k-waiting-dot::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--fg-dim);
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: k-dot-pulse 1.3s ease-in-out infinite;
+}
+
+/* ── Collapsible section (tickets #27, #31) ──────────────────────────────────────
+ * Shared by Recruit/Build (#27 — collapsed by default so the panel's resting
+ * height drops dramatically) and the Event Log (#31). Native <details> means
+ * keyboard toggling + focus come for free. */
+
+.k-collapsible {
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius-md);
+  background: var(--k-surface);
+  flex-shrink: 0;
+}
+
+.k-collapsible__summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--k-text-dim);
+  list-style: none;
+  user-select: none;
+}
+.k-collapsible__summary::-webkit-details-marker { display: none; }
+
+.k-collapsible__body {
+  padding: 4px 10px 10px;
+  border-top: 1px solid var(--k-border);
+}
+
+/* Event log specifically needs a scroll cap — Recruit/Build never grow long
+ * enough to need one (fixed at 3-4 items). */
+.k-event-log .k-collapsible__body {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.k-event-log__round-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--k-text-muted);
+  margin-top: 8px;
+  margin-bottom: 3px;
+}
+.k-event-log__round:first-child .k-event-log__round-label { margin-top: 6px; }
+
+.k-event-log__entry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  padding: 1.5px 0;
+}
+
+/* ── Error toast ───────────────────────────────────────────────────────────────── */
+
+.k-error-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: var(--k-z-error-toast);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(224, 80, 80, 0.22), rgba(224, 80, 80, 0.1));
+  border: 1px solid rgba(224, 80, 80, 0.6);
+  color: #ff9a9a;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  max-width: 420px;
+  box-shadow: var(--k-shadow-md), 0 0 18px rgba(224, 80, 80, 0.25);
+  animation: k-toast-in 0.2s ease-out both;
+}
+
+.k-error-toast__close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0 2px;
+  line-height: 1;
+  margin-left: 4px;
+}
+
+/* ── Connection banner (ticket #47) ───────────────────────────────────────────────
+ * A dropped socket used to be silent — the board would just freeze with no
+ * explanation. Sits above everything, full width, so it's impossible to miss
+ * regardless of what else is on screen. */
+
+.k-connection-banner {
+  position: sticky;
+  top: 0;
+  z-index: var(--k-z-error-toast);
+  width: 100%;
+  text-align: center;
+  padding: 6px 0;
+  font-size: 11px;
+  font-weight: 700;
+  background: linear-gradient(180deg, rgba(212, 168, 32, 0.9), rgba(212, 168, 32, 0.75));
+  color: #1a1206;
+  flex-shrink: 0;
+}
+
+/* ── Elimination banner (ticket #38) ─────────────────────────────────────────────
+ * A capital falling had zero visible feedback before this. Purple to match
+ * the board's existing capture-sweep color — same "ownership transferred"
+ * language, just the loudest version of it. Public to all players. */
+
+.k-elimination-banner {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--k-z-error-toast);
+  background: linear-gradient(180deg, rgba(128, 80, 192, 0.92), rgba(80, 40, 140, 0.92));
+  border: 1px solid #a070e0;
+  color: #fff;
+  padding: 12px 22px;
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: var(--k-shadow-lg), 0 0 30px rgba(128, 80, 192, 0.5);
+  animation: k-turn-banner 0.4s ease-out both;
+  font-size: 13px;
+}
+
+.k-elimination-banner__title {
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 2px;
+  letter-spacing: 0.02em;
+}
+
+/* ── Combat toast (for players not involved in the battle) ───────────────────── */
+
+.k-combat-toast {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: var(--k-z-combat-toast);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(64, 144, 208, 0.2), rgba(64, 144, 208, 0.08));
+  border: 1px solid rgba(64, 144, 208, 0.5);
+  color: var(--fg);
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  max-width: 360px;
+  box-shadow: var(--k-shadow-md);
+  animation: k-combat-toast-in 0.2s ease-out both;
+}
+
+@keyframes k-combat-toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes k-toast-in {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ── Loading spinner ───────────────────────────────────────────────────────────── */
+
+.k-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--rule);
+  border-top-color: var(--accent);
+  border-radius: 999px;
+  margin: 0 auto 14px;
+  animation: k-spin 0.8s linear infinite;
+}
+
+.k-action-panel .btn,
+.k-action-panel .btn--ghost,
+.k-action-panel .btn--danger,
+.k-action-panel .btn--blue {
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.k-action-panel .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(217, 126, 58, 0.35);
+}
+
+.k-action-panel .btn--ghost:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--k-shadow-sm);
+  border-color: rgba(217, 126, 58, 0.4);
+}
+
+.btn--danger {
+  background: linear-gradient(180deg, rgba(224, 80, 80, 0.14), rgba(224, 80, 80, 0.04));
+  color: #ff8080;
+  border: 1px solid #e05050;
+  font-family: var(--k-font-ui);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.15s ease;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(224, 80, 80, 0.26), rgba(224, 80, 80, 0.1));
+  box-shadow: 0 0 14px rgba(224, 80, 80, 0.4);
+  transform: translateY(-1px);
+}
+
+/* Press depress + focus ring (ticket #36) — neither existed on any button
+ * variant before; danger/blue at least had a hover lift, .btn/.btn--ghost
+ * (styles.css) didn't even have that. */
+.btn--danger:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+.btn--danger:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn--blue {
+  background: linear-gradient(180deg, rgba(64, 144, 208, 0.14), rgba(64, 144, 208, 0.04));
+  color: #6cb0e8;
+  border: 1px solid #4090d0;
+  font-family: var(--k-font-ui);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.15s ease;
+}
+
+.btn--blue:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(64, 144, 208, 0.26), rgba(64, 144, 208, 0.1));
+  box-shadow: 0 0 14px rgba(64, 144, 208, 0.4);
+  transform: translateY(-1px);
+}
+
+.btn--blue:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+
+.btn--danger:focus-visible, .btn--blue:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* ── Combat overlay ─────────────────────────────────────────────────────────── */
+
+.k-combat-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--k-z-combat-toast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 18, 0.55);
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+}
+
+.k-combat-overlay__card {
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.04), transparent 50%), var(--bg-soft);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 20px 28px;
+  min-width: 280px;
+  max-width: 400px;
+  pointer-events: auto;
+  position: relative;
+  box-shadow: var(--k-shadow-lg);
+  animation: k-panel-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.k-combat-overlay__title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.k-combat-overlay__title--win  { color: #40b060; }
+.k-combat-overlay__title--lose { color: #e05050; }
+
+.k-combat-overlay__dismiss {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.k-combat-overlay__dismiss:hover { color: var(--fg); }
+
+/* ── Combat log / event log ─────────────────────────────────────────────────── */
+
+.k-log-entry {
+  animation: k-slide-in-log 0.18s ease-out both;
+  padding: 4px 4px;
+  border-radius: 4px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 11px;
+  line-height: 1.5;
+  transition: background 0.12s ease;
+}
+
+.k-log-entry:last-child { border-bottom: none; }
+.k-log-entry:hover { background: rgba(255, 255, 255, 0.035); }
+
+.k-log-entry__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+/* ── Turn indicator ─────────────────────────────────────────────────────────── */
+
+.k-turn-indicator {
+  padding: 8px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.k-turn-indicator--mine {
+  background: linear-gradient(180deg, rgba(217, 126, 58, 0.24), rgba(217, 126, 58, 0.1));
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  animation: k-turn-banner 0.3s ease-out both, k-glow-pulse 2.2s ease-in-out infinite;
+}
+
+.k-turn-indicator--other {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  color: var(--fg-dim);
+}
+
+/* ── Winner overlay ─────────────────────────────────────────────────────────── */
+
+/* ── Modal (tickets #42, #43) ─────────────────────────────────────────────── */
+
+.k-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--k-z-winner);
+  background: rgba(10, 14, 18, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.k-modal {
+  background: var(--k-surface-raised);
+  border: 1px solid var(--k-border);
+  border-radius: var(--k-radius-lg);
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--k-shadow-lg);
+  animation: k-panel-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.k-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--k-border);
+  flex-shrink: 0;
+}
+
+.k-modal__title {
+  font-weight: 700;
+  font-size: 14px;
+  font-family: var(--font-display);
+}
+
+.k-modal__close {
+  background: none;
+  border: none;
+  color: var(--k-text-dim);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+.k-modal__close:hover { color: var(--k-text); }
+.k-modal__close:focus-visible, .k-info-btn:focus-visible, .k-event-log__summary:focus-visible, .k-collapsible__summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.k-modal__body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--k-text-dim);
+}
+
+.k-modal__section + .k-modal__section { margin-top: 16px; }
+.k-modal__section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--k-text);
+  margin-bottom: 4px;
+}
+
+.k-winner-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--k-z-winner);
+  background: rgba(10, 14, 18, 0.85);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.k-winner-overlay__content {
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(217, 126, 58, 0.15), transparent 60%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.04), transparent 50%),
+    var(--bg-soft);
+  border: 1px solid var(--accent-soft);
+  border-radius: 14px;
+  padding: 48px 60px;
+  text-align: center;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: var(--k-shadow-lg), var(--k-glow-accent);
+  animation: k-panel-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* ── Info tooltip (piece/structure info panel) ────────────────────────────── */
+
+.k-info-btn {
+  width: 28px !important;
+  min-width: 28px !important;
+  padding: 0 !important;
+  font-size: 13px !important;
+  flex-shrink: 0;
+  opacity: 0.65;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.k-info-btn:hover { opacity: 1; }
+
+.k-info-tooltip {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  padding: 7px 10px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--fg);
+  line-height: 1.55;
+  animation: k-slide-in-log 0.12s ease-out both;
+}
+
+/* ── Panel depth utility (cards inside the Kingdoms sidebar) ─────────────────── */
+
+.k-panel {
+  box-shadow: var(--k-shadow-sm);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.025), transparent 45%), var(--bg-soft);
+}
+
+/* ── Board wrapper ─────────────────────────────────────────────────────────── */
+
+.k-board-wrapper {
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 38%, rgba(217, 126, 58, 0.07), transparent 70%),
+    radial-gradient(ellipse 60% 50% at 18% 85%, rgba(64, 144, 208, 0.06), transparent 65%),
+    #0a0e12;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  position: relative;
+  box-shadow: inset 0 0 70px rgba(0, 0, 0, 0.55), var(--k-shadow-sm);
+  height: 100%;
+}
+
+/* Zoom hint shown on first hover */
+.k-board-wrapper::after {
+  content: 'scroll to zoom · drag to pan';
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+  letter-spacing: 0.04em;
+}

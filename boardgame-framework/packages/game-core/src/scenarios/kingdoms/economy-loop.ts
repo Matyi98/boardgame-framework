@@ -12,11 +12,18 @@
  *   For each active player (in turn order):
  *     1. Income collection
  *     2. Food consumption + gold exchange
- *     3. Attrition (LIFO — most recently recruited unit dies first)
- *     4. Mortgage (safeguard — fires only if gold goes negative)
+ *     3. Mortgage (safeguard — fires only if gold goes negative)
  *   After all players:
- *     5. Connectivity check (informational — emits territory-disconnected events)
- *     6. round-ended event
+ *     4. Connectivity check (informational — emits territory-disconnected events)
+ *     5. round-ended event
+ *
+ * ── No starvation attrition ──────────────────────────────────────────────────
+ *
+ * Units are never disbanded for an unmet food deficit. Instead, recruit-unit
+ * blocks recruiting a unit kind that would push the player's food balance
+ * negative (see actions/recruit.ts). An existing army can run a deficit
+ * indefinitely; gold exchange in step 2 covers what it can, the remainder is
+ * simply unmet that round.
  *
  * ── Why per-player then all-players ──────────────────────────────────────────
  *
@@ -35,7 +42,7 @@
 
 import type { GameState } from '../../state/game-state.js';
 import type { GameEvent } from '../../events/game-event.js';
-import { computeIncome, computeFoodCost, chooseAttritionVictims } from './income.js';
+import { computeIncome, computeFoodCost } from './income.js';
 import { exchangeForFood } from './resources.js';
 import { EXCHANGE_RATE } from './economy.js';
 import { playerConnectedTiles } from './connectivity.js';
@@ -128,28 +135,16 @@ function processPlayerCycle(
     if (rawDeficit > 0) {
       // ── Step 2a: Gold exchange ──────────────────────────────────────────────
       //
-      // Gold-for-food exchange fires before attrition. This is the last-resort
-      // buffer that lets wealthy players sustain a food deficit for one round
-      // without losing units. EXCHANGE_RATE gold buys 1 food.
+      // Gold-for-food exchange is the only automatic relief for a food deficit.
+      // EXCHANGE_RATE gold buys 1 food. Any remainder is simply unmet this
+      // round — no units are disbanded (see module doc header).
       const purchased = exchangeForFood(inv, rawDeficit);
       if (purchased > 0)
         events.push({ type: 'food-purchased', playerId, payload: { purchased, goldSpent: purchased * EXCHANGE_RATE } });
-
-      // ── Step 3: Attrition ──────────────────────────────────────────────────
-      //
-      // If deficit remains after exchange, units are disbanded LIFO (most
-      // recently recruited first). Only units are disbanded — never structures.
-      const remainingDeficit = rawDeficit - purchased;
-      if (remainingDeficit > 0) {
-        const victims = chooseAttritionVictims(state, playerId, remainingDeficit);
-        for (const id of victims) state.pieces.delete(id);
-        if (victims.length > 0)
-          events.push({ type: 'attrition-applied', playerId, payload: { disbandedCount: victims.length, pieceIds: victims } });
-      }
     }
   }
 
-  // ── Step 4: Mortgage (safeguard) ───────────────────────────────────────────
+  // ── Step 3: Mortgage (safeguard) ────────────────────────────────────────────
   //
   // In the current economic model gold cannot go negative (food exchange is
   // capped at available gold). This step is a safeguard for future changes
@@ -173,19 +168,19 @@ function processPlayerCycle(
  * when state.rounds.endTurn() returns newRound === true.
  *
  * Processes all active (non-eliminated) players in their current turn order.
- * Emits income-collected, food-consumed, food-purchased, attrition-applied,
- * city-mortgaged, territory-disconnected, and round-ended events.
+ * Emits income-collected, food-consumed, food-purchased, city-mortgaged,
+ * territory-disconnected, and round-ended events.
  */
 export function processRoundEnd(state: GameState): GameEvent[] {
   const events: GameEvent[] = [];
   const activePlayers = state.players.active();
 
-  // Steps 1–4: full economic cycle per player
+  // Steps 1–3: full economic cycle per player
   for (const player of activePlayers) {
     processPlayerCycle(state, player.id, events);
   }
 
-  // Step 5: Connectivity check — informational only, no ownership change
+  // Step 4: Connectivity check — informational only, no ownership change
   for (const player of activePlayers) {
     const disconnected = findDisconnectedTiles(state, player.id);
     if (disconnected.length > 0)

@@ -1,5 +1,15 @@
 export { kingdomsScenario } from './scenario.js';
 
+// View types — import these in the frontend instead of duplicating the shape
+export type {
+  KingdomsView,
+  KingdomsTileView,
+  KingdomsTilepiece,
+  KingdomsTileIncome,
+  KingdomsPlayerView,
+  KingdomsTurnState,
+} from './view-builder.js';
+
 // Combat
 export type { Combatant, CombatResult } from './combat.js';
 export { resolveAttack } from './combat.js';
@@ -22,7 +32,6 @@ export {
   calculateGoldIncome,
   EXCHANGE_RATE,
   DEVELOP_COST,
-  ATTRITION_PRIORITY,
   STRUCTURE_INCOME_EFFECTS,
 } from './economy.js';
 

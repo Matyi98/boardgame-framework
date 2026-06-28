@@ -17,7 +17,6 @@ import { PieceRegistry } from '../../pieces/piece-registry.js';
 import {
   UNIT_DEFS,
   UNIT_KINDS,
-  OCCUPYING_UNIT_KINDS,
   COMBAT_UNIT_KINDS,
   type UnitKind,
   type UnitDef,
@@ -31,7 +30,7 @@ import {
 } from './structures.js';
 
 // Re-export so callers that import from pieces.ts don't need to know where things live
-export { UNIT_KINDS, OCCUPYING_UNIT_KINDS, COMBAT_UNIT_KINDS, STRUCTURE_KINDS, BUILDABLE_STRUCTURES };
+export { UNIT_KINDS, COMBAT_UNIT_KINDS, STRUCTURE_KINDS, BUILDABLE_STRUCTURES };
 export type { UnitKind, UnitDef, StructureKind, StructureDef };
 
 // ── Derived stat shapes ───────────────────────────────────────────────────────

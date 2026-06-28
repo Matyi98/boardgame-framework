@@ -26,9 +26,17 @@ function ring(radius: number): ReadonlyArray<{ q: number; r: number }> {
   const coords: { q: number; r: number }[] = [];
   let q = radius;
   let r = 0;
+  // Starting at (radius, 0), traverse the ring counter-clockwise.
+  // Direction order matters: wrong order causes inner-ring tiles to be generated
+  // instead of the actual ring-k boundary (the old bug: only 45 of 61 coords
+  // were unique and 3 of 6 ring-4 corners were missing entirely).
   const dirs = [
-    { dq: -1, dr: 0 }, { dq: -1, dr: 1 }, { dq: 0, dr: 1 },
-    { dq: 1, dr: 0 },  { dq: 1, dr: -1 }, { dq: 0, dr: -1 },
+    { dq:  0, dr: -1 },
+    { dq: -1, dr:  0 },
+    { dq: -1, dr:  1 },
+    { dq:  0, dr:  1 },
+    { dq:  1, dr:  0 },
+    { dq:  1, dr: -1 },
   ];
   for (const dir of dirs) {
     for (let i = 0; i < radius; i++) {
@@ -137,9 +145,15 @@ export function buildKingdomsMap(_playerCount: number, seed: string): GameMap {
 
 // ── Starting positions ────────────────────────────────────────────────────────
 
-/** Ring-4 corners per player count. Players start maximally separated. */
+/**
+ * Ring-4 corner positions per player count, maximally separated.
+ * All 6 ring-4 corners: (4,0) (4,-4) (0,-4) (-4,0) (-4,4) (0,4) — each pair
+ * of adjacent corners is hex-distance 4 apart; opposite corners are 8 apart.
+ */
 export const KINGDOMS_STARTING_COORDS: Record<number, ReadonlyArray<{ q: number; r: number }>> = {
   2: [{ q: 4, r: -4 }, { q: -4, r: 4 }],
-  3: [{ q: 4, r: 0  }, { q: 0,  r: -4 }, { q: -4, r: 4 }],
-  4: [{ q: 4, r: 0  }, { q: 0,  r: -4 }, { q: -4, r: 0 }, { q:  0, r: 4 }],
+  3: [{ q: 4, r: 0  }, { q: 0,  r: -4 }, { q: -4, r: 4  }],
+  4: [{ q: 4, r: 0  }, { q: 0,  r: -4 }, { q: -4, r: 0  }, { q:  0, r: 4  }],
+  5: [{ q: 4, r: 0  }, { q: 4,  r: -4 }, { q: 0,  r: -4 }, { q: -4, r: 0  }, { q: 0, r: 4 }],
+  6: [{ q: 4, r: 0  }, { q: 4,  r: -4 }, { q: 0,  r: -4 }, { q: -4, r: 0  }, { q: -4, r: 4 }, { q: 0, r: 4 }],
 };

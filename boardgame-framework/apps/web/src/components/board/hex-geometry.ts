@@ -4,9 +4,15 @@ export const HEX_SIZE = 62;
 
 const SQRT3 = Math.sqrt(3);
 
+/** Hex center using the module-default HEX_SIZE (Frontier 3-ring map). */
 export function hexCenter(q: number, r: number): [number, number] {
-  const x = HEX_SIZE * (SQRT3 * q + (SQRT3 / 2) * r);
-  const y = HEX_SIZE * (1.5 * r);
+  return hexCenterAt(q, r, HEX_SIZE);
+}
+
+/** Hex center with an explicit size — use this for non-standard map sizes. */
+export function hexCenterAt(q: number, r: number, size: number): [number, number] {
+  const x = size * (SQRT3 * q + (SQRT3 / 2) * r);
+  const y = size * (1.5 * r);
   return [x, y];
 }
 
@@ -26,3 +32,7 @@ export const HEX_DIRS = [
 
 /** SVG viewBox string that fits a 3-ring (37-tile) map at HEX_SIZE=62. */
 export const BOARD_VIEWBOX = '-410 -370 820 740';
+
+/** SVG viewBox string that fits a 4-ring (61-tile) Kingdoms map at HEX_SIZE=44. */
+export const KINGDOMS_BOARD_VIEWBOX = '-380 -330 760 660';
+export const KINGDOMS_HEX_SIZE = 44;
